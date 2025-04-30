@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\FlightDataController;
 use App\Http\Controllers\OpenSkyController;
+use App\Http\Controllers\AuthController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -29,3 +30,7 @@ Route::middleware('api')->group(function () {
 
 
 Route::get('/flights/nearby', [FlightDataController::class, 'getNearbyFlights']);
+
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class,'login']);
+Route::middleware('auth:api')->get('/user', [AuthController::class], 'me');
