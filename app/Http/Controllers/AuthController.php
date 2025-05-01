@@ -1,49 +1,54 @@
 <?php
 
 namespace App\Http\Controllers;
-
-use Tymon\JWTAuth\Facades\JWTAuth;
-use App\Models\User;
 use Illuminate\Http\Request;
+use App\Models\User;
+use Tymon\JWTAuth\Facades\JWTAuth;
+use Tymon\JWTAuth\Exceptions\JWTException;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Validator;
+
 
 class AuthController extends Controller
 {
-    public function registrer(Request $request){
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8|confirmed',
-        ]);
+   public function register(Request $request){
+    $request->validate([
+        'name' => 'required',
+        'email' => 'required|email|unique:users,email',
+        'password' => 'required|min:6|confirmed',
+    ]);
 
-        if($validator->fails()){
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
+    $user = User::create([
+        'name' => $request->name,
+        'email' => $request->email,
+        'password' => Hash::make($request->password),
+    ]);
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => bcrypt($request->password),
-        ]);
+    $token = JWTAuth::fromUser($user);
 
-        return response()->json(['message' => 'User registered successfully'], 201);
-    }
+    return response()->json(['user' => $user, 'jwt_token' => $token], 201);
+
+   }
 
 
-    public function login(Request $request){
-        $credentials = $request->only('email', 'password');
-
-        if($token = JWTAuth::attempt($credentials)){
-            return response()->json(['token' => $token]);
-        }
-
+public function login(Request $request){
+    $request->validate([
+        'email'=> 'required|email',
+        'password' =>'required|min:6',
+    ]);
+    if(!$token = JWTAuth::attempt($request->only('email', 'password'))){
         return response()->json(['error' => 'Unauthorized'], 401);
     }
 
+    return response()->json(['jwt_token' => $token]);
 
-    public function me(){
-        return response()->json(JWTAuth::user());
+}
+    public function me(Request $request)
+    {
+       return response()->json($request->user());
     }
+
+
+
+
 
 }
