@@ -19,7 +19,9 @@ Route::post('/login', [AuthController::class, 'login']);
 // Rutas protegidas
 Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
-    Route::post('/logout', [AuthController::class, 'logout']); // si está implementado
+    Route::post('/refresh', [AuthController::class, 'refresh']);
+    Route::post('/logout', [AuthController::class, 'logout']);
+
 
     Route::post('/flight-data/store', [FlightDataController::class, 'store']);
     Route::get('/flight-data', [FlightDataController::class, 'getAllData']);
