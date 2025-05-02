@@ -104,6 +104,9 @@ class FlightDataController extends Controller
         } catch (\Exception $e) {
             return response()->json(['error' => 'Unauthorized', 'details' => $e->getMessage()], 401);
         }
+
+
+
         $lat = $request->query('lat');
         $lon = $request->query('lon');
         $radius = $request->query('radius', 100); // en kilómetros
@@ -116,24 +119,29 @@ class FlightDataController extends Controller
         $openSkyController = new OpenSkyController();
         $liveData = $openSkyController->fetchLiveData();
 
-        $flightsWithDistance = collect($liveData['states'])->filter(function ($flight) use ($lat, $lon, $radius) {
+        $flightsWithDistance = collect($liveData['states'])->map(function ($flight) use ($lat, $lon) {
             $flightLat = $flight[6];
             $flightLon = $flight[5];
 
-            if (is_null($flightLat) || is_null($flightLon))
+            if (is_null($flightLat) || is_null($flightLon)) {
                 return null;
+            }
 
-            // Add the 'distance' key to the flight array
-            $flight['distance'] = $this->calculateDistance($lat, $lon, $flightLat, $flightLon);
-
+            $distance = $this->calculateDistance($lat, $lon, $flightLat, $flightLon);
+            // Add distance as a new element to the array
+            $flight[] = $distance;
+            return $flight;
         })->filter(); // Remove nulls
 
-
         // Vuelos dentro del radio
-        $nearby = $flightsWithDistance->filter(fn($f) => $f['distance'] <= $radius);
-        //si no hay vuelos cercanos , devuelve los mÁS cercanos
-        $closest = $flightsWithDistance->sortBy('distance')->take($fallbackCount)->values();
+        $nearby = $flightsWithDistance->filter(function ($f) use ($radius) {
+            return $f[count($f) - 1] <= $radius; // Distance is now the last element
+        });
 
+        // Si no hay vuelos cercanos, devuelve los más cercanos
+        $closest = $flightsWithDistance->sortBy(function ($f) {
+            return $f[count($f) - 1]; // Sort by distance (last element)
+        })->take($fallbackCount)->values();
 
         return response()->json([
             'nearby_flights' => $nearby->isNotEmpty() ? $nearby->values() : $closest,
