@@ -22,10 +22,11 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/refresh', [AuthController::class, 'refresh']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
-
-    Route::post('/flight-data/store', [FlightDataController::class, 'store']);
-    Route::get('/flight-data', [FlightDataController::class, 'getAllData']);
-    Route::get('/opensky/states', [OpenSkyController::class, 'getStatesAll']);
-    Route::get('/flights/nearby', [FlightDataController::class, 'getNearbyFlights']);
-    Route::post('/predict-delay', [FlightDataController::class, 'predictDelay']);
+    Route::middleware(['role:user'])->group(function () {
+        Route::post('/flight-data/store', [FlightDataController::class, 'store']);
+        Route::get('/flight-data', [FlightDataController::class, 'getAllData']);
+        Route::get('/opensky/states', [OpenSkyController::class, 'getStatesAll']);
+        Route::get('/flights/nearby', [FlightDataController::class, 'getNearbyFlights']);
+        Route::post('/predict-delay', [FlightDataController::class, 'predictDelay']);
+    });
 });
