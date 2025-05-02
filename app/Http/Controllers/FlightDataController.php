@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\OpenSkyAircraft;
 use Illuminate\Support\Facades\Http;
-
+use Illuminate\Support\Facades\Cache;
+use Symfony\Component\Process\Process;
+use App\Models\FlightPrediction;
 
 class FlightDataController extends Controller
 {
@@ -33,9 +35,15 @@ class FlightDataController extends Controller
                 continue;
             }
 
+            // Skip flights without a valid callsign
+            $callsign = $state[1] ?? null;
+            if (!$callsign || $callsign === 'N/A' || $callsign === '') {
+                continue;
+            }
+
             $flights[] = [
                 'icao' => $state[0] ?? 'N/A',
-                'callsign' => $state[1] ?? 'N/A',
+                'callsign' => $callsign,
                 'latitude' => $state[6] ?? 0,
                 'longitude' => $state[5] ?? 0,
                 'altitude' => $state[7] ?? 0,
@@ -48,6 +56,15 @@ class FlightDataController extends Controller
         \Log::info('Datos preparados para inserción:', ['count' => count($flights)]);
 
         try {
+            if (empty($flights)) {
+                \Log::info('No hay vuelos válidos con callsign para almacenar');
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No se encontraron vuelos con callsign válido',
+                    'inserted' => 0
+                ]);
+            }
+
             $result = OpenSkyAircraft::insert($flights);
             \Log::info('Resultado de inserción:', ['result' => $result]);
 
@@ -77,53 +94,34 @@ class FlightDataController extends Controller
         return response()->json($data);
     }
 
-    private function fetchLiveDataFromOpenSky()
-{
-    $url = "https://opensky-network.org/api/states/all";
-
-    try {
-        $response = Http::timeout(10)->get($url);
-
-        if ($response->successful()) {
-            return $response->json();
-        } else {
-            \Log::error('Error al consultar OpenSky:', ['status' => $response->status()]);
-            return ['states' => []];
-        }
-    } catch (\Exception $e) {
-        \Log::error('Excepción al llamar OpenSky:', ['message' => $e->getMessage()]);
-        return ['states' => []];
-    }
-}
+    
 
 
     public function getNearbyFlights(Request $request)
     {
         $lat = $request->query('lat');
         $lon = $request->query('lon');
-        $radius = $request->query('radius', 100); // km
+        $radius = $request->query('radius', 100); // en kilómetros
         $fallbackCount = 5;
 
         if (!$lat || !$lon) {
             return response()->json(['error' => 'Missing lat/lon'], 400);
         }
 
-        $liveData = $this->fetchLiveDataFromOpenSky();
+        $allAircraft = OpenSkyAircraft::all();
 
-        $flightsWithDistance = collect($liveData['states'])->map(function ($flight) use ($lat, $lon) {
-            $flightLat = $flight[6];
-            $flightLon = $flight[5];
-
-            if (is_null($flightLat) || is_null($flightLon))
+        $flightsWithDistance = $allAircraft->map(function ($flight) use ($lat, $lon) {
+            if (is_null($flight->latitude) || is_null($flight->longitude)) {
                 return null;
+            }
 
-            $distance = $this->calculateDistance($lat, $lon, $flightLat, $flightLon);
-            $flight['distance'] = $distance;
+            $distance = $this->calculateDistance($lat, $lon, $flight->latitude, $flight->longitude);
+            $flight->distance = $distance;
             return $flight;
-        })->filter(); // remove nulls
+        })->filter();
 
         // Vuelos dentro del radio
-        $nearby = $flightsWithDistance->filter(fn($f) => $f['distance'] <= $radius);
+        $nearby = $flightsWithDistance->filter(fn($f) => $f->distance <= $radius);
 
         if ($nearby->isNotEmpty()) {
             return response()->json([
@@ -131,7 +129,7 @@ class FlightDataController extends Controller
             ]);
         }
 
-        // Si no hay vuelos cercanos, devuelve los más cercanos
+        // Si no hay cercanos, devuelve los más cercanos
         $closest = $flightsWithDistance->sortBy('distance')->take($fallbackCount)->values();
 
         return response()->json([
@@ -139,6 +137,7 @@ class FlightDataController extends Controller
             'note' => "No nearby flights within {$radius}km. Showing closest ones instead."
         ]);
     }
+
     //Distancia Haversine
     private function calculateDistance($lat1, $lon1, $lat2, $lon2)
     {
@@ -153,4 +152,8 @@ class FlightDataController extends Controller
         $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
         return $earthRadius * $c;
     }
+
+
+
+    
 }

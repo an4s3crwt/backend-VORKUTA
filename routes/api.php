@@ -25,4 +25,5 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/flight-data', [FlightDataController::class, 'getAllData']);
     Route::get('/opensky/states', [OpenSkyController::class, 'getStatesAll']);
     Route::get('/flights/nearby', [FlightDataController::class, 'getNearbyFlights']);
+    Route::post('/predict-delay', [FlightDataController::class, 'predictDelay']);
 });
