@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\OpenSkyAircraft;
+use App\Http\Controllers\OpenSkyController;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\Process\Process;
 use App\Models\FlightPrediction;
+
+use Tymon\JWTAuth\Facades\JWTAuth;
 
 class FlightDataController extends Controller
 {
@@ -88,17 +91,19 @@ class FlightDataController extends Controller
     }
 
 
-    public function getAllData()
-    {
-        $data = OpenSkyAircraft::all();
-        return response()->json($data);
-    }
 
-    
+
+
 
 
     public function getNearbyFlights(Request $request)
     {
+
+        try {
+            $user = JWTAuth::parseToken()->authenticate(); // Protege el endpoint
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Unauthorized', 'details' => $e->getMessage()], 401);
+        }
         $lat = $request->query('lat');
         $lon = $request->query('lon');
         $radius = $request->query('radius', 100); // en kilómetros
@@ -108,33 +113,33 @@ class FlightDataController extends Controller
             return response()->json(['error' => 'Missing lat/lon'], 400);
         }
 
-        $allAircraft = OpenSkyAircraft::all();
+        $openSkyController = new OpenSkyController();
+        $liveData = $openSkyController->fetchLiveData();
 
-        $flightsWithDistance = $allAircraft->map(function ($flight) use ($lat, $lon) {
-            if (is_null($flight->latitude) || is_null($flight->longitude)) {
+        $flightsWithDistance = collect($liveData['states'])->filter(function ($flight) use ($lat, $lon, $radius) {
+            $flightLat = $flight[6];
+            $flightLon = $flight[5];
+
+            if (is_null($flightLat) || is_null($flightLon))
                 return null;
-            }
 
-            $distance = $this->calculateDistance($lat, $lon, $flight->latitude, $flight->longitude);
-            $flight->distance = $distance;
-            return $flight;
-        })->filter();
+            // Add the 'distance' key to the flight array
+            $flight['distance'] = $this->calculateDistance($lat, $lon, $flightLat, $flightLon);
+
+        })->filter(); // Remove nulls
+
 
         // Vuelos dentro del radio
-        $nearby = $flightsWithDistance->filter(fn($f) => $f->distance <= $radius);
-
-        if ($nearby->isNotEmpty()) {
-            return response()->json([
-                'nearby_flights' => $nearby->values()
-            ]);
-        }
-
-        // Si no hay cercanos, devuelve los más cercanos
+        $nearby = $flightsWithDistance->filter(fn($f) => $f['distance'] <= $radius);
+        //si no hay vuelos cercanos , devuelve los mÁS cercanos
         $closest = $flightsWithDistance->sortBy('distance')->take($fallbackCount)->values();
 
+
         return response()->json([
-            'nearby_flights' => $closest,
-            'note' => "No nearby flights within {$radius}km. Showing closest ones instead."
+            'nearby_flights' => $nearby->isNotEmpty() ? $nearby->values() : $closest,
+            'note' => $nearby->isNotEmpty()
+                ? "Showing flights within {$radius}km."
+                : "No nearby flights within {$radius}km. Showing closest ones instead."
         ]);
     }
 
@@ -155,5 +160,5 @@ class FlightDataController extends Controller
 
 
 
-    
+
 }
