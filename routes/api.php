@@ -5,7 +5,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\FlightDataController;
 use App\Http\Controllers\OpenSkyController;
 use App\Http\Controllers\AuthController;
-
+use App\Http\Controllers\UserPreferencesController;
+use App\Http\Controllers\SavedFlightsController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -28,5 +29,16 @@ Route::middleware(['jwt.auth'])->group(function () {
         Route::get('/opensky/states', [OpenSkyController::class, 'getStatesAll']);
         Route::get('/flights/nearby', [FlightDataController::class, 'getNearbyFlights']);
         Route::post('/predict-delay', [FlightDataController::class, 'predictDelay']);
+
+
+        //Preferencias
+        Route::get('/user/preferences', [UserPreferencesController::class, 'index']);
+        Route::post('/user/preferences', [UserPreferencesController::class, 'update']);
+
+        // Vuelos guardados
+        Route::get('/user/saved-flights', [SavedFlightsController::class, 'index']);
+        Route::post('/user/saved-flights', [SavedFlightsController::class, 'store']);
+        Route::delete('/user/saved-flights/{icao}', [SavedFlightsController::class, 'destroy']);
+
     });
 });
