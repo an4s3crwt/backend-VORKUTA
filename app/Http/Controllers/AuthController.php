@@ -5,12 +5,12 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\User;
 use Kreait\Firebase\Auth as FirebaseAuth;
-use Kreait\Firebase\Exception\Auth\FailedToVerifyToken;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
+    // Injecting the Firebase Auth service into the controller
     protected $firebaseAuth;
 
     public function __construct(FirebaseAuth $firebaseAuth)
@@ -18,9 +18,15 @@ class AuthController extends Controller
         $this->firebaseAuth = $firebaseAuth;
     }
 
-    // Login/registro con token de Firebase
+    /**
+     * Summary of login
+     * @param \Illuminate\Http\Request $request
+     * @return mixed|\Illuminate\Http\JsonResponse
+     */
     public function login(Request $request)
     {
+
+        
         $decoded = $request->attributes->get('firebase_user'); // 
         $uid = $decoded->sub; // Firebase UID viene en el claim "sub"
     
