@@ -34,5 +34,10 @@ return [
         'username' => env('OPENSKY_USERNAME'),
         'password' => env('OPENSKY_PASSWORD'), 
        ],
+       'firebase' => [
+    'project_id' => env('FIREBASE_PROJECT_ID'),
+    'credentials' => env('FIREBASE_CREDENTIALS'),
+],
+
 
 ];

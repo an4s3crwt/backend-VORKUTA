@@ -1,92 +1,44 @@
 <?php
 
 namespace App\Http\Controllers;
+
 use Illuminate\Http\Request;
 use App\Models\User;
-use Tymon\JWTAuth\Facades\JWTAuth;
-use Tymon\JWTAuth\Exceptions\JWTException;
-use Illuminate\Support\Facades\Hash;
-
+use Kreait\Firebase\Auth as FirebaseAuth;
+use Kreait\Firebase\Exception\Auth\FailedToVerifyToken;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
-    public function register(Request $request)
+    protected $firebaseAuth;
+
+    public function __construct(FirebaseAuth $firebaseAuth)
     {
-        $request->validate([
-            'name' => 'required',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|min:6|confirmed',
-        ]);
-
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-        ]);
-
-        //asignar rol, es user por defecto
-        $user->assignRole('user');
-
-
-        
-        $token = JWTAuth::fromUser($user);
-
-        return response()->json(['user' => $user, 'jwt_token' => $token], 201);
-
+        $this->firebaseAuth = $firebaseAuth;
     }
 
-
+    // Login/registro con token de Firebase
     public function login(Request $request)
-    {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required|min:6',
-        ]);
-        if (!$token = JWTAuth::attempt($request->only('email', 'password'))) {
-            return response()->json(['error' => 'Unauthorized'], 401);
-        }
-
-        return $this->respondWithToken($token);
-
-    }
-    public function me()
-    {
-        try {
-            $user = JWTAuth::parseToken()->authenticate();
-            return response()->json($user);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'No se pudo obtener el usuario'], 401);
-        }
+    { 
+         return response()->json(['message' => 'Login successful']);
     }
 
-    public function refresh()
+    // Obtener usuario autenticado
+    public function me(Request $request)
     {
-        try {
-            $newToken = JWTAuth::parseToken()->refresh();
-            return $this->respondWithToken($newToken);
-        } catch (JWTException $e) {
-            return response()->json(['error' => 'Token inválido o expirado'], 401);
-        }
+         // Retorna los detalles del usuario autenticado usando el UID del token
+         $uid = $request->firebaseUser;
+
+         // Aquí puedes recuperar más detalles sobre el usuario desde tu base de datos
+         $user = User::find($uid);  // O lo que necesites según tu base de datos
+ 
+         return response()->json($user);
     }
 
-    public function logout()
+    // Logout: no se necesita en backend con Firebase, ya que se gestiona desde el frontend
+    public function logout(Request $request)
     {
-        try {
-            JWTAuth::invalidate(JWTAuth::getToken());
-            return response()->json(['message' => 'Sesión cerrada']);
-        } catch (JWTException $e) {
-            return response()->json(['error' => 'Error al cerrar sesión'], 500);
-        }
+        // Opcional: invalidar sesión si usas sesiones locales
+        return response()->json(['message' => 'Sesión finalizada en frontend.']);
     }
-
-
-    protected function respondWithToken($token)
-    {
-        return response()->json([
-            'jwt_token' => $token,
-            'token_type' => 'bearer',
-            'expires_in' => JWTAuth::factory()->getTTL() * 60 // en segundos
-        ]);
-    }
-
 }

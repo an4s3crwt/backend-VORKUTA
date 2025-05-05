@@ -2,25 +2,18 @@
 
 namespace App\Providers;
 
-// use Illuminate\Support\Facades\Gate;
-use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
+use App\Guards\FirebaseGuard;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\ServiceProvider;
 
-class AuthServiceProvider extends ServiceProvider
+class AuthServiceProvider extends \Illuminate\Foundation\Support\Providers\AuthServiceProvider
 {
-    /**
-     * The model to policy mappings for the application.
-     *
-     * @var array<class-string, class-string>
-     */
-    protected $policies = [
-        //
-    ];
-
-    /**
-     * Register any authentication / authorization services.
-     */
-    public function boot(): void
+    public function boot()
     {
-        //
+        $this->registerPolicies();
+
+        Auth::extend('firebase', function ($app, $name, array $config) {
+            return new FirebaseGuard(Auth::createUserProvider($config['provider']));
+        });
     }
 }

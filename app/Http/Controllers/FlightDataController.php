@@ -98,51 +98,48 @@ class FlightDataController extends Controller
 
     public function getNearbyFlights(Request $request)
     {
-
         try {
-            $user = JWTAuth::parseToken()->authenticate(); // Protege el endpoint
+            $user = $request->get('firebase_user');
+            if (!$user) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
         } catch (\Exception $e) {
             return response()->json(['error' => 'Unauthorized', 'details' => $e->getMessage()], 401);
         }
-
-
-
+    
         $lat = $request->query('lat');
         $lon = $request->query('lon');
         $radius = $request->query('radius', 100); // en kilómetros
         $fallbackCount = 5;
-
+    
         if (!$lat || !$lon) {
             return response()->json(['error' => 'Missing lat/lon'], 400);
         }
-
+    
         $openSkyController = new OpenSkyController();
         $liveData = $openSkyController->fetchLiveData();
-
+    
         $flightsWithDistance = collect($liveData['states'])->map(function ($flight) use ($lat, $lon) {
             $flightLat = $flight[6];
             $flightLon = $flight[5];
-
+    
             if (is_null($flightLat) || is_null($flightLon)) {
                 return null;
             }
-
+    
             $distance = $this->calculateDistance($lat, $lon, $flightLat, $flightLon);
-            // Add distance as a new element to the array
             $flight[] = $distance;
             return $flight;
-        })->filter(); // Remove nulls
-
-        // Vuelos dentro del radio
+        })->filter();
+    
         $nearby = $flightsWithDistance->filter(function ($f) use ($radius) {
-            return $f[count($f) - 1] <= $radius; // Distance is now the last element
+            return $f[count($f) - 1] <= $radius;
         });
-
-        // Si no hay vuelos cercanos, devuelve los más cercanos
+    
         $closest = $flightsWithDistance->sortBy(function ($f) {
-            return $f[count($f) - 1]; // Sort by distance (last element)
+            return $f[count($f) - 1];
         })->take($fallbackCount)->values();
-
+    
         return response()->json([
             'nearby_flights' => $nearby->isNotEmpty() ? $nearby->values() : $closest,
             'note' => $nearby->isNotEmpty()
@@ -150,7 +147,7 @@ class FlightDataController extends Controller
                 : "No nearby flights within {$radius}km. Showing closest ones instead."
         ]);
     }
-
+    
     //Distancia Haversine
     private function calculateDistance($lat1, $lon1, $lat2, $lon2)
     {

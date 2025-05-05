@@ -5,19 +5,19 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
-use Tymon\JWTAuth\Contracts\JWTSubject; //  Importar interfaz
 
-class User extends Authenticatable implements JWTSubject //  Implementar interfaz
+class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable, HasRoles;
+    use HasFactory, Notifiable, HasRoles;
 
     protected $fillable = [
         'name',
         'email',
         'password',
+        'firebase_uid', // Añádelo aquí
     ];
+    
 
     protected $hidden = [
         'password',
@@ -28,15 +28,4 @@ class User extends Authenticatable implements JWTSubject //  Implementar interfa
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
     ];
-
-    // ✅ 3. Implementar los métodos requeridos por JWTSubject
-    public function getJWTIdentifier()
-    {
-        return $this->getKey();
-    }
-
-    public function getJWTCustomClaims()
-    {
-        return [];
-    }
 }

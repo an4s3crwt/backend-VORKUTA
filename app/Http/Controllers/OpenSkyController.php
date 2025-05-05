@@ -4,15 +4,18 @@ namespace App\Http\Controllers;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
-use Tymon\JWTAuth\Facades\JWTAuth;
 
 class OpenSkyController extends Controller
 {
-
     public function getStatesAll(Request $request)
     {
         try {
-            $user = JWTAuth::parseToken()->authenticate();
+            // Obtener usuario de Firebase desde la request (set en el middleware)
+            $user = $request->get('firebase_user');
+
+            if (!$user) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
 
             $data = $this->fetchLiveData();
             if (!$data) {
@@ -30,7 +33,6 @@ class OpenSkyController extends Controller
         }
     }
 
-    // Método reutilizable sin Request ni Response
     public function fetchLiveData()
     {
         try {
@@ -50,6 +52,4 @@ class OpenSkyController extends Controller
             return null;
         }
     }
-
-    
 }
