@@ -10,6 +10,7 @@ return [
      */
 
     'default' => env('FIREBASE_PROJECT', 'app'),
+ 
 
     /*
      * ------------------------------------------------------------------------
@@ -50,7 +51,7 @@ return [
              *
              */
             'credentials' => env('FIREBASE_CREDENTIALS', storage_path('app/credentials.json')),
-
+            'project_id' => env('FIREBASE_PROJECT_ID'),
             /*
              * ------------------------------------------------------------------------
              * Firebase Auth Component

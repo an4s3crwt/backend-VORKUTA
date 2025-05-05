@@ -7,6 +7,7 @@ use App\Models\User;
 use Kreait\Firebase\Auth as FirebaseAuth;
 use Kreait\Firebase\Exception\Auth\FailedToVerifyToken;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
@@ -19,26 +20,53 @@ class AuthController extends Controller
 
     // Login/registro con token de Firebase
     public function login(Request $request)
-    { 
-         return response()->json(['message' => 'Login successful']);
+    {
+        return response()->json(['message' => 'Login successful']);
+    }
+
+    // Registro de usuario con datos de Firebase
+    public function register(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'firebase_uid' => 'required|string|unique:users,firebase_uid',
+            'email' => 'required|string|email|unique:users',
+            'name' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 400);
+        }
+
+        $user = User::create([
+            'firebase_uid' => $request->firebase_uid,
+            'email' => $request->email,
+            'name' => $request->name,
+            'password' => bcrypt('firebase'), // valor dummy si no usas contraseña
+        ]);
+
+
+        return response()->json([
+            'message' => 'Usuario registrado correctamente',
+            'user' => $user,
+        ]);
     }
 
     // Obtener usuario autenticado
     public function me(Request $request)
     {
-         // Retorna los detalles del usuario autenticado usando el UID del token
-         $uid = $request->firebaseUser;
+        // Retorna los detalles del usuario autenticado usando el UID del token
+        $uid = $request->firebaseUser;
 
-         // Aquí puedes recuperar más detalles sobre el usuario desde tu base de datos
-         $user = User::find($uid);  // O lo que necesites según tu base de datos
- 
-         return response()->json($user);
+        // Aquí puedes recuperar más detalles sobre el usuario desde tu base de datos
+        $user = User::where('firebase_uid', $uid)->first();
+
+        return response()->json($user);
     }
 
     // Logout: no se necesita en backend con Firebase, ya que se gestiona desde el frontend
     public function logout(Request $request)
     {
-        // Opcional: invalidar sesión si usas sesiones locales
         return response()->json(['message' => 'Sesión finalizada en frontend.']);
     }
+
 }
