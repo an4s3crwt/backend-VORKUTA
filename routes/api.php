@@ -7,8 +7,9 @@ use App\Http\Controllers\UserPreferencesController;
 use App\Http\Controllers\SavedFlightsController;
 
 Route::prefix('v1')->group(function () {
-    // Solo login: el frontend maneja registro con Firebase
-    Route::post('/login', [AuthController::class, 'login']);
+   // Proteger  el login con firebase.auth (pero sin el middleware de rol aún)
+    Route::middleware(['firebase.auth'])->post('/login', [AuthController::class, 'login']);
+
     Route::post('/register', [AuthController::class, 'register']);
 
 

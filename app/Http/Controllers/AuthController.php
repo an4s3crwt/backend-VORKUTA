@@ -21,8 +21,23 @@ class AuthController extends Controller
     // Login/registro con token de Firebase
     public function login(Request $request)
     {
-        return response()->json(['message' => 'Login successful']);
+        $decoded = $request->attributes->get('firebase_user'); // 
+        $uid = $decoded->sub; // Firebase UID viene en el claim "sub"
+    
+        Log::info('UID recibido en login:', ['uid' => $uid]);
+    
+        $user = User::where('firebase_uid', $uid)->first();
+    
+        if (!$user) {
+            return response()->json(['error' => 'Usuario no registrado en el backend.'], 404);
+        }
+    
+        return response()->json([
+            'message' => 'Login successful',
+            'user' => $user,
+        ]);
     }
+    
 
     // Registro de usuario con datos de Firebase
     public function register(Request $request)
