@@ -4,28 +4,22 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Firebase\Auth\Token\Exception\InvalidToken;
 
 class CheckRole
-{
-    /**
-     * Handle an incoming request.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Closure  $next
-     * @param  string  $role
-     * @return mixed
-     */
-    public function handle(Request $request, Closure $next, $role)
+{ public function handle(Request $request, Closure $next, $role)
     {
-        // Obtén el usuario autenticado
         $user = auth()->user();
 
-        // Verifica si el usuario tiene el rol adecuado
-        if ($user && $user->role !== $role) {
-            return response()->json(['message' => 'No tienes permisos para acceder a este recurso'], 403);
+        // Verificar el rol del usuario basado en el claim
+        if (isset($user->customClaims['admin']) && $role == 'admin' && $user->customClaims['admin'] === true) {
+            return $next($request);
         }
 
-        // Si el rol es válido, continúa con la solicitud
-        return $next($request);
+        if ($role == 'user' && !isset($user->customClaims['admin'])) {
+            return $next($request);
+        }
+
+        return response()->json(['error' => 'Unauthorized'], 403);
     }
 }

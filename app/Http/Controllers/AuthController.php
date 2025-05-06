@@ -26,24 +26,29 @@ class AuthController extends Controller
     public function login(Request $request)
     {
 
-        
+
         $decoded = $request->attributes->get('firebase_user'); // 
         $uid = $decoded->sub; // Firebase UID viene en el claim "sub"
-    
+
         Log::info('UID recibido en login:', ['uid' => $uid]);
-    
+
         $user = User::where('firebase_uid', $uid)->first();
-    
+
+
         if (!$user) {
             return response()->json(['error' => 'Usuario no registrado en el backend.'], 404);
         }
-    
+
+        // Actualizar la última actividad del usuario
+        $user->last_activity = now();  // Guarda la fecha y hora actual
+        $user->save();
+
         return response()->json([
             'message' => 'Login successful',
             'user' => $user,
         ]);
     }
-    
+
 
     // Registro de usuario con datos de Firebase
     public function register(Request $request)
@@ -74,22 +79,22 @@ class AuthController extends Controller
 
     // Obtener usuario autenticado
     public function me(Request $request)
-{
-    $firebaseUser = $request->attributes->get('firebase_user'); // Get the verified Firebase user
+    {
+        $firebaseUser = $request->attributes->get('firebase_user'); // Get the verified Firebase user
 
-    $uid = $firebaseUser->sub; // Extract UID from Firebase token claims
+        $uid = $firebaseUser->sub; // Extract UID from Firebase token claims
 
-    $user = User::where('firebase_uid', $uid)->first();
+        $user = User::where('firebase_uid', $uid)->first();
 
-    if (!$user) {
-        return response()->json(['error' => 'User not found.'], 404);
+        if (!$user) {
+            return response()->json(['error' => 'User not found.'], 404);
+        }
+
+        return response()->json([
+            'name' => $user->name,
+            'email' => $user->email,
+        ]);
     }
-
-    return response()->json([
-        'name' => $user->name,
-        'email' => $user->email,
-    ]);
-}
 
 
     // Logout: no se necesita en backend con Firebase, ya que se gestiona desde el frontend
@@ -98,12 +103,13 @@ class AuthController extends Controller
         return response()->json(['message' => 'Sesión finalizada en frontend.']);
     }
 
-    public function getUserUid(){
-        try{
+    public function getUserUid()
+    {
+        try {
             $user = $this->getUserByEmail(auth()->user()->email);
             return $user->uid;
-        }catch(\Exception $e){
-            return response()->json(['error' => 'No se pudo obtener el uid'. $e->getMessage()], 500);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'No se pudo obtener el uid' . $e->getMessage()], 500);
         }
     }
 
