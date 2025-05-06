@@ -22,6 +22,7 @@ Route::prefix('v1')->group(function () {
 
         // Vuelos guardados
         Route::post('/saved-flights', [SavedFlightController::class, 'store']);
+        Route::get('/saved-flights', action: [SavedFlightController::class,'index']);
         // Gestión de vuelos
         Route::prefix('flights')->group(function () {
             Route::get('/', [FlightDataController::class, 'getAllData']);

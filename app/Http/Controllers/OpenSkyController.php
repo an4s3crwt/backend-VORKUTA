@@ -68,5 +68,5 @@ class OpenSkyController extends Controller
         } catch (\Exception $e) {
             return null;
         }
-    }
+    } //cambiar este metodo / crear uno nuevo para scanner, que no consuma de este 
 }

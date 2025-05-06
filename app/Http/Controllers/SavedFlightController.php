@@ -34,4 +34,28 @@ class SavedFlightController extends Controller
 
         return response()->json(['message' => 'Vuelo guardado.'], 201);
     }
+
+
+
+    /**
+     * Summary of index
+     * @param \Illuminate\Http\Request $request
+     * @return mixed|\Illuminate\Http\JsonResponse
+     */
+    public function index(Request $request)
+    {
+        // Obtener el UID del usuario autenticado desde el token de Firebase
+        $user = $request->attributes->get('firebase_user');
+        $uid = $user->sub;
+
+        // Obtener todos los vuelos guardados por este usuario
+        $savedFlights = SavedFlight::where('user_uid', $uid)->get();
+
+        if ($savedFlights->isEmpty()) {
+            return response()->json(['message' => 'No tienes vuelos guardados.'], 404);
+        }
+
+        return response()->json(['saved_flights' => $savedFlights]);
+    } 
+
 }
