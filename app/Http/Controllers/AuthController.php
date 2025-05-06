@@ -74,15 +74,23 @@ class AuthController extends Controller
 
     // Obtener usuario autenticado
     public function me(Request $request)
-    {
-        // Retorna los detalles del usuario autenticado usando el UID del token
-        $uid = $request->firebaseUser;
+{
+    $firebaseUser = $request->attributes->get('firebase_user'); // Get the verified Firebase user
 
-        // Aquí puedes recuperar más detalles sobre el usuario desde tu base de datos
-        $user = User::where('firebase_uid', $uid)->first();
+    $uid = $firebaseUser->sub; // Extract UID from Firebase token claims
 
-        return response()->json($user);
+    $user = User::where('firebase_uid', $uid)->first();
+
+    if (!$user) {
+        return response()->json(['error' => 'User not found.'], 404);
     }
+
+    return response()->json([
+        'name' => $user->name,
+        'email' => $user->email,
+    ]);
+}
+
 
     // Logout: no se necesita en backend con Firebase, ya que se gestiona desde el frontend
     public function logout(Request $request)

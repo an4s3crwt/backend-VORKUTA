@@ -47,7 +47,24 @@ class OpenSkyController extends Controller
                 return null;
             }
 
-            return $response->json();
+            $data = $response->json();
+            // Filtra antes de devolver al frontend
+            if (!isset($data['states'])) {
+                return null;
+            }
+
+            $filteredStates = collect($data['states'])
+                ->filter(function ($flight) {
+                    return $flight[0] && $flight[1] && $flight[5] && $flight[6];
+                })
+                ->take(200)
+                ->values()
+                ->all();
+
+            return [
+                'time' => $data['time'],
+                'states' => $filteredStates,
+            ];
         } catch (\Exception $e) {
             return null;
         }

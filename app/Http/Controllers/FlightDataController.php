@@ -106,40 +106,40 @@ class FlightDataController extends Controller
         } catch (\Exception $e) {
             return response()->json(['error' => 'Unauthorized', 'details' => $e->getMessage()], 401);
         }
-    
+
         $lat = $request->query('lat');
         $lon = $request->query('lon');
         $radius = $request->query('radius', 100); // en kilómetros
         $fallbackCount = 5;
-    
+
         if (!$lat || !$lon) {
             return response()->json(['error' => 'Missing lat/lon'], 400);
         }
-    
+
         $openSkyController = new OpenSkyController();
         $liveData = $openSkyController->fetchLiveData();
-    
+
         $flightsWithDistance = collect($liveData['states'])->map(function ($flight) use ($lat, $lon) {
             $flightLat = $flight[6];
             $flightLon = $flight[5];
-    
+
             if (is_null($flightLat) || is_null($flightLon)) {
                 return null;
             }
-    
+
             $distance = $this->calculateDistance($lat, $lon, $flightLat, $flightLon);
             $flight[] = $distance;
             return $flight;
         })->filter();
-    
+
         $nearby = $flightsWithDistance->filter(function ($f) use ($radius) {
             return $f[count($f) - 1] <= $radius;
         });
-    
+
         $closest = $flightsWithDistance->sortBy(function ($f) {
             return $f[count($f) - 1];
         })->take($fallbackCount)->values();
-    
+
         return response()->json([
             'nearby_flights' => $nearby->isNotEmpty() ? $nearby->values() : $closest,
             'note' => $nearby->isNotEmpty()
@@ -147,7 +147,7 @@ class FlightDataController extends Controller
                 : "No nearby flights within {$radius}km. Showing closest ones instead."
         ]);
     }
-    
+
     //Distancia Haversine
     private function calculateDistance($lat1, $lon1, $lat2, $lon2)
     {
