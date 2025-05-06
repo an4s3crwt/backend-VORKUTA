@@ -4,10 +4,13 @@ namespace App\Providers;
 
 use Kreait\Firebase\Factory;
 use Kreait\Firebase\Auth;
+use Kreait\Firebase\Exception\AuthException;
 use Illuminate\Support\ServiceProvider;
 
 class FirebaseAuthServiceProvider extends ServiceProvider
 {
+    protected $firebaseAuth;
+
     public function register()
     {
         $this->app->bind(Auth::class, function ($app) {
@@ -17,11 +20,15 @@ class FirebaseAuthServiceProvider extends ServiceProvider
                 throw new \Exception('Firebase credentials not defined.');
             }
 
-            return (new Factory)
+            // Configuración de la autenticación de Firebase
+            $this->firebaseAuth = (new Factory)
                 ->withServiceAccount($config['credentials'])
                 ->createAuth();
+
+            return $this->firebaseAuth;
         });
     }
+
     
 
     public function boot()

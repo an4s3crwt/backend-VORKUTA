@@ -6,12 +6,16 @@ use App\Http\Controllers\OpenSkyController;
 use App\Http\Controllers\UserPreferencesController;
 use App\Http\Controllers\SavedFlightController;
 
+
 Route::prefix('v1')->group(function () {
     // Proteger  el login con firebase.auth (pero sin el middleware de rol aún)
     Route::middleware(['firebase.auth'])->post('/login', [AuthController::class, 'login']);
 
     Route::post('/register', [AuthController::class, 'register']);
 
+    Route::post('/assign-admin/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'assignAdminClaim']);
+    Route::get('/verify-admin/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class,'verifyAdminClaim']);
+    Route::post('create-first-admin', [\App\Http\Controllers\Admin\AdminUserController::class, 'createFirstAdmin']);
 
     // Rutas protegidas con middleware Firebase
     Route::middleware(['firebase.auth', 'role:user'])->group(function () {
@@ -38,5 +42,19 @@ Route::prefix('v1')->group(function () {
         // Preferencias
         Route::get('/preferences', [UserPreferencesController::class, 'index']);
         Route::post('/preferences', [UserPreferencesController::class, 'update']);
+    });
+
+
+    Route::middleware(['firebase.auth', 'role:admin'])->group(function() {
+        Route::get('/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
+        Route::get('/users', [\App\Http\Controllers\Admin\AdminUserController::class, 'index']);
+        Route::get('/users/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'show']);
+        Route::delete('/users/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'destroy']);
+        Route::post('/users/{uid}/ban', [\App\Http\Controllers\Admin\AdminUserController::class, 'ban']);
+
+        Route::post('/admin/users/{uid}/assign-admin', [\App\Http\Controllers\Admin\AdminUserController::class, 'assignAdminRole']);
+    
+        Route::get('/logs', [\App\Http\Controllers\Admin\AdminLogController::class, 'index']);
+
     });
 });

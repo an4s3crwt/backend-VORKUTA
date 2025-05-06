@@ -98,4 +98,13 @@ class AuthController extends Controller
         return response()->json(['message' => 'Sesión finalizada en frontend.']);
     }
 
+    public function getUserUid(){
+        try{
+            $user = $this->getUserByEmail(auth()->user()->email);
+            return $user->uid;
+        }catch(\Exception $e){
+            return response()->json(['error' => 'No se pudo obtener el uid'. $e->getMessage()], 500);
+        }
+    }
+
 }

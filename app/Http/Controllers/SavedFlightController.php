@@ -11,29 +11,37 @@ class SavedFlightController extends Controller
     {
         $request->validate([
             'flight_icao' => 'required|string',
-            'flight_data' => 'nullable|array',
+            'flight_data' => 'required|array',
         ]);
-
-        $user = $request->attributes->get('firebase_user'); // Si estás usando auth Firebase
-        $uid = $user->sub; // UID de Firebase
-
-        $alreadySaved = SavedFlight::where('user_uid', $uid)
+    
+        $user = auth()->user();
+    
+        // Evitar duplicados
+        $alreadySaved = SavedFlight::where('user_uid', $user->uid)
             ->where('flight_icao', $request->flight_icao)
             ->exists();
-
+    
         if ($alreadySaved) {
-            return response()->json(['message' => 'Vuelo ya guardado.'], 409);
+            return response()->json(['message' => 'Flight already saved'], 409);
         }
-
-        $flight = new SavedFlight();
-        $flight->user_uid = $uid;
-        $flight->flight_icao = $request->flight_icao;
-        $flight->flight_data = $request->flight_data ?? [];
-        $flight->saved_at = now();
-        $flight->save();
-
-        return response()->json(['message' => 'Vuelo guardado.'], 201);
+    
+        $data = $request->flight_data;
+    
+        $savedFlight = new SavedFlight();
+        $savedFlight->user_uid = $user->uid;
+        $savedFlight->flight_icao = $request->flight_icao;
+        $savedFlight->flight_data = json_encode($data); // Guarda todo igualmente
+        $savedFlight->aircraft_type = $data['aircraft_type'] ?? null;
+        $savedFlight->airline_code = $data['airline_code'] ?? null;
+        $savedFlight->departure_airport = $data['departure_airport'] ?? null;
+        $savedFlight->arrival_airport = $data['arrival_airport'] ?? null;
+        $savedFlight->saved_at = now();
+    
+        $savedFlight->save();
+    
+        return response()->json(['message' => 'Flight saved successfully'], 201);
     }
+    
 
 
 

@@ -125,4 +125,21 @@ class FirebaseGuard implements Guard
         $this->user = $user;
         return $this;
     }
+
+    private function isAdmin($user)
+    {
+        try {
+            $factory = (new Factory())
+                ->withServiceAccount(config('firebase.projects.app.credentials'))
+                ->withProjectId(env('FIREBASE_PROJECT_ID'));
+
+            $auth = $factory->createAuth();
+            $userClaims = $auth->getUser($user->firebase_uid); // firebase_uid en la base de datos
+
+            // Verificar si el usuario tiene el claim 'admin'
+            return isset($userClaims->customClaims['admin']) && $userClaims->customClaims['admin'] === true;
+        } catch (\Exception $e) {
+            return false; // Si hay un error, se considera que no es admin
+        }
+    }
 }
