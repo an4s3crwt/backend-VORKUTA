@@ -99,7 +99,8 @@ class FlightDataController extends Controller
     public function getNearbyFlights(Request $request)
     {
         try {
-            $user = $request->get('firebase_user');
+            $user = $request->attributes->get('firebase_user');
+
             if (!$user) {
                 return response()->json(['error' => 'Unauthorized'], 401);
             }

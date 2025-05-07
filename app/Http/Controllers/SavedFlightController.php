@@ -14,10 +14,11 @@ class SavedFlightController extends Controller
             'flight_data' => 'required|array',
         ]);
     
-        $user = auth()->user();
+        $user = $request->attributes->get('firebase_user');
+        $uid = $user->sub;
     
         // Evitar duplicados
-        $alreadySaved = SavedFlight::where('user_uid', $user->uid)
+        $alreadySaved = SavedFlight::where('user_uid', $uid)
             ->where('flight_icao', $request->flight_icao)
             ->exists();
     
@@ -28,9 +29,9 @@ class SavedFlightController extends Controller
         $data = $request->flight_data;
     
         $savedFlight = new SavedFlight();
-        $savedFlight->user_uid = $user->uid;
+        $savedFlight->user_uid = $uid;
         $savedFlight->flight_icao = $request->flight_icao;
-        $savedFlight->flight_data = json_encode($data); // Guarda todo igualmente
+        $savedFlight->flight_data = json_encode($data);
         $savedFlight->aircraft_type = $data['aircraft_type'] ?? null;
         $savedFlight->airline_code = $data['airline_code'] ?? null;
         $savedFlight->departure_airport = $data['departure_airport'] ?? null;
@@ -41,6 +42,7 @@ class SavedFlightController extends Controller
     
         return response()->json(['message' => 'Flight saved successfully'], 201);
     }
+    
     
 
 

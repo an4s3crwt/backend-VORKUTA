@@ -21,6 +21,7 @@ class Kernel extends HttpKernel
         //\Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
         \App\Http\Middleware\TrimStrings::class,
         \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
+    
     ];
 
     /**
@@ -66,8 +67,9 @@ class Kernel extends HttpKernel
         'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
 
-        'role' => \App\Http\Middleware\CheckRole::class,
-       'firebase.auth' => \App\Http\Middleware\FirebaseAuthMiddleware::class,
+        'check.admin' => \App\Http\Middleware\CheckAdminFirebase::class,
+        'check.user' => \App\Http\Middleware\CheckUserFirebase::class,
+        'firebase.auth' => \App\Http\Middleware\FirebaseAuthMiddleware::class,
 
        
     ];

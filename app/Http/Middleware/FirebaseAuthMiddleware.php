@@ -7,118 +7,177 @@ use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class FirebaseAuthMiddleware
 {
+    private const FIREBASE_KEY_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
+    private const CACHE_KEY = 'firebase_public_keys';
+    private const CACHE_TTL = 3600; // 1 hora
 
-    //Cache for storing Firebase public keys to avoid repeated network requests
-    private $cachedKeys = null;
-
-    /**
-     * HANLDE
-     * @param \Illuminate\Http\Request $request
-     * @param \Closure $next
-     */
     public function handle(Request $request, Closure $next)
     {
-        //gets the token from the Auth header
+        \Log::info('Inicio de middleware FirebaseAuth');
+        
+        // Obtener el encabezado de autorización
+        $authHeader = $request->header('Authorization');
+        \Log::debug('Encabezado Authorization:', ['header' => $authHeader]);
+
+        // Obtener el token
         $token = $request->bearerToken();
+        \Log::debug('Token extraído:', ['token' => $token ? 'presente' : 'ausente']);
 
-
-        //Manage Unauthorized requests, if there is no token
+        // Si no hay token, devolver un error
         if (!$token) {
-            return response()->json(['error' => 'Unauthorized'], 401);
+            \Log::warning('Token no proporcionado');
+            return response()->json(['error' => 'Token requerido'], 401);
         }
 
         try {
-            // Get the Firebase public key corresponding to the 'kid' (Key ID) in the JWT header (method below)
+            \Log::debug('Intentando decodificar token...');
             $publicKey = $this->getFirebasePublicKey($token);
-
-            // Decode and validate the JWT token using the public key
+            
+            // Aumentar leeway para pruebas
+            JWT::$leeway = 3600; // 1 hora
+            
+            // Decodificar el token de Firebase
             $decodedToken = JWT::decode($token, $publicKey);
+            
+            \Log::info('Token decodificado correctamente', [
+                'uid' => $decodedToken->sub ?? null,
+                'issuer' => $decodedToken->iss ?? null,
+                'issued_at' => $decodedToken->iat ?? null,
+                'expiration' => $decodedToken->exp ?? null
+            ]);
 
-            // Asignar el usuario a la request para usarlo en los controladores
+            // Agregar el token decodificado (claims) a la solicitud para su posterior uso
             $request->attributes->add(['firebase_user' => $decodedToken]);
 
+            // Verificación del claim 'admin'
+            if (isset($decodedToken->admin) && $decodedToken->admin === true) {
+                return $next($request);  // Permitir el acceso si es un administrador
+            }
+
+            // Si el usuario no es admin, devolver un error de acceso
+            return response()->json(['error' => 'Acceso denegado. Solo administradores.'], 403); 
+
         } catch (\Exception $e) {
-            // Log the error cause i had some issues with token verification or decoding
-            Log::error('Firebase auth error: ' . $e->getMessage());
-            // Return Unauthorized (401) response with a fancy message
+            \Log::error('Error en autenticación Firebase:', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
-                'error' => 'Unauthorized',
-                'message' => $e->getMessage()
+                'error' => 'Error de autenticación',
+                'message' => config('app.debug') ? $e->getMessage() : null,
+                'timestamp' => time() // Para verificar sincronización de tiempos
             ], 401);
         }
-        // Pass the request to the next middleware/controller
-        return $next($request);
     }
 
-    /**
-     * Summary of getFirebasePublicKey
-     * @param mixed $token
-     * @throws \Exception
-     * @return Key
-     */
-    private function getFirebasePublicKey($token): Key
+    // Método para extraer el token del encabezado de la solicitud
+    protected function extractToken(Request $request): ?string
+    {
+        $header = $request->header('Authorization', '');
+        
+        if (preg_match('/Bearer\s+(.*)$/i', $header, $matches)) {
+            return $matches[1];
+        }
+        
+        return $request->bearerToken(); // Fallback
+    }
+
+    // Método para obtener la clave pública de Firebase
+    protected function getFirebasePublicKey(string $token): Key
+    {
+        $header = $this->extractTokenHeader($token);
+        
+        if (!isset($header['kid'])) {
+            throw new \RuntimeException('KID not found in token header');
+        }
+
+        $keys = $this->fetchPublicKeys();
+        $kid = $header['kid'];
+
+        if (!isset($keys[$kid])) {
+            throw new \RuntimeException("Public key for KID '$kid' not found");
+        }
+
+        return new Key($keys[$kid], 'RS256');
+    }
+
+    // Extraer el encabezado del token para obtener el 'kid'
+    protected function extractTokenHeader(string $token): array
     {
         try {
-            // Decode the JWT header to extract the 'kid' (Key ID)
             [$headerEncoded] = explode('.', $token);
             $headerJson = base64_decode(strtr($headerEncoded, '-_', '+/'));
-            $header = json_decode($headerJson, true);
-
-            // If the 'kid' is not found in the token's header, throw an exception
-            if (!isset($header['kid'])) {
-                throw new \Exception("KID not found in token header.");
-            }
-
-            //eXTRACT the KEY ID from the token's header
-            $kid = $header['kid'];
-
-            // Check if Firebase public keys are already cached; if not, fetch and cache them
-            if ($this->cachedKeys === null) {
-                $this->fetchAndCacheFirebasePublicKeys(); //(method below)
-            }
-
-            // If the 'kid' is not found in the cached keys, throw an exception
-            if (!isset($this->cachedKeys[$kid])) {
-                throw new \Exception("Key with kid '$kid' not found in public keys.");
-            }
-
-            // Retrieve the public key associated with the 'kid'
-            $publicKey = $this->cachedKeys[$kid];
-
-            // Return a Key object with the public key and the algorithm (RS256 used by Firebase JWTs)
-            return new Key($publicKey, 'RS256');
+            return json_decode($headerJson, true) ?: [];
         } catch (\Exception $e) {
-            //log the error
-            Log::error('Error while decoding JWT or fetching public keys: ' . $e->getMessage());
-            throw $e;
+            throw new \RuntimeException('Invalid token format', 0, $e);
         }
     }
 
-    /**
-     * Summary of fetchAndCacheFirebasePublicKeys
-     * @return void
-     */
-    private function fetchAndCacheFirebasePublicKeys()
+    // Método para obtener las claves públicas de Firebase
+    protected function fetchPublicKeys(): array
     {
-        try {
-            // Use Guzzle HTTP client to fetch the public keys from Firebase's endpoint
-            $client = new Client();
-            $response = $client->get('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com');
+        return Cache::remember(self::CACHE_KEY, self::CACHE_TTL, function () {
+            try {
+                $client = new Client(['timeout' => 5]);
+                $response = $client->get(self::FIREBASE_KEY_URL);
+                
+                $keys = json_decode($response->getBody(), true);
+                $cacheControl = $response->getHeaderLine('Cache-Control');
+                
+                Log::info('Fetched Firebase public keys', [
+                    'key_count' => count($keys),
+                    'cache_control' => $cacheControl
+                ]);
+                
+                return $keys;
+            } catch (\Exception $e) {
+                Log::error('Failed to fetch Firebase public keys', ['error' => $e->getMessage()]);
+                throw new \RuntimeException('Unable to retrieve Firebase public keys', 0, $e);
+            }
+        });
+    }
 
-            // Cache the public keys in the class's cachedKeys variable for future use
-            $this->cachedKeys = json_decode($response->getBody(), true);
-
-            // Log a success message after successfully caching the keys
-            Log::info('Firebase public keys fetched and cached successfully.');
-        } catch (\Exception $e) {
-            // If there is an error while fetching or caching the keys, log the error
-            Log::error('Error while fetching Firebase public keys: ' . $e->getMessage());
-            // Throw the exception to be handled by the 'handle' method
-            throw $e;
+    // Verificar que el token contiene los claims requeridos
+    protected function validateToken(object $token): void
+    {
+        $requiredClaims = ['sub', 'iss', 'aud', 'iat', 'exp'];
+        
+        foreach ($requiredClaims as $claim) {
+            if (!isset($token->{$claim})) {
+                throw new \RuntimeException("Missing required claim: $claim");
+            }
         }
+        
+        // Validar el issuer
+        $projectId = config('firebase.project_id');
+        if ($token->iss !== "https://securetoken.google.com/{$projectId}") {
+            throw new \RuntimeException("Invalid token issuer");
+        }
+        
+        // Validar el audience
+        if ($token->aud !== $projectId) {
+            throw new \RuntimeException("Invalid token audience");
+        }
+    }
+
+    // Responder con error no autorizado
+    protected function unauthorizedResponse(string $message, \Throwable $e = null): \Illuminate\Http\JsonResponse
+    {
+        $response = [
+            'error' => 'Unauthorized',
+            'message' => $message,
+        ];
+        
+        if ($e && config('app.debug')) {
+            $response['debug'] = $e->getMessage();
+        }
+        
+        return response()->json($response, 401);
     }
 }

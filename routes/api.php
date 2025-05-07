@@ -18,7 +18,7 @@ Route::prefix('v1')->group(function () {
     Route::post('create-first-admin', [\App\Http\Controllers\Admin\AdminUserController::class, 'createFirstAdmin']);
 
     // Rutas protegidas con middleware Firebase
-    Route::middleware(['firebase.auth', 'role:user'])->group(function () {
+    Route::middleware(['firebase.auth', 'check.user'])->group(function () {
         // Información del usuario
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -45,8 +45,8 @@ Route::prefix('v1')->group(function () {
     });
 
 
-    Route::middleware(['firebase.auth', 'role:admin'])->group(function() {
-        Route::get('/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
+    Route::middleware(['firebase.base', 'check.admin'])->group(function() {
+        Route::get('/admin/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
         Route::get('/users', [\App\Http\Controllers\Admin\AdminUserController::class, 'index']);
         Route::get('/users/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'show']);
         Route::delete('/users/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'destroy']);

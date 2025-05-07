@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
@@ -7,6 +6,7 @@ use Illuminate\Http\Request;
 use Kreait\Firebase\Auth as FirebaseAuth;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class AdminUserController extends Controller
 {
@@ -18,12 +18,9 @@ class AdminUserController extends Controller
         $this->auth = $auth;
     }
 
-
-
     // Método para crear el primer admin
     public function createFirstAdmin(Request $request)
     {
-
         // Verificar si ya existe un administrador
         $adminExists = collect($this->auth->listUsers(100))
             ->filter(function ($user) {
@@ -46,6 +43,7 @@ class AdminUserController extends Controller
 
                 return response()->json(['message' => 'Administrador anterior eliminado correctamente.'], 200);
             } catch (\Exception $e) {
+                Log::error('Error al eliminar el administrador: ' . $e->getMessage());
                 return response()->json(['error' => 'Error al eliminar el administrador: ' . $e->getMessage()], 500);
             }
         }
@@ -76,22 +74,29 @@ class AdminUserController extends Controller
 
             return response()->json(['message' => 'Primer admin creado exitosamente.'], 200);
         } catch (\Exception $e) {
+            Log::error('Error al crear el primer admin: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
-    public function assignAdminClaim($userUid)
+    // Asignar el rol de administrador a un usuario
+    public function assignAdminRole($uid)
     {
         try {
-            // Asigna el claim "admin" al usuario con el UID proporcionado
-            $this->auth->setCustomUserClaims($userUid, ['admin' => true]);
-
-            return response()->json(['message' => 'El usuario ahora es un administrador.'], 200);
+            // Verificar que el usuario exista antes de asignar el rol
+            $user = $this->auth->getUser($uid);
+    
+            // Establecer el claim 'admin' como verdadero
+            $this->auth->setCustomUserClaims($uid, ['admin' => true]);
+    
+            return response()->json(['message' => 'Rol de admin asignado correctamente.']);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Error al asignar el claim de admin: ' . $e->getMessage()], 500);
+            Log::error('Error al asignar el rol de admin: ' . $e->getMessage());
+            return response()->json(['error' => 'Error al asignar el rol de admin: ' . $e->getMessage()], 400);
         }
     }
 
+    // Verificar si un usuario tiene el claim de admin
     public function verifyAdminClaim($userUid)
     {
         try {
@@ -104,10 +109,8 @@ class AdminUserController extends Controller
                 return response()->json(['message' => 'Este usuario NO es un administrador.'], 200);
             }
         } catch (\Exception $e) {
+            Log::error('Error al verificar los claims: ' . $e->getMessage());
             return response()->json(['error' => 'Error al verificar los claims: ' . $e->getMessage()], 500);
         }
     }
-
-
 }
-

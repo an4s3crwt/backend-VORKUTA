@@ -1,16 +1,12 @@
 <?php
-
 namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Response;
 use Kreait\Firebase\Auth as FirebaseAuth;
 
 class CheckAdmin
 {
-
-
     protected $auth;
 
     public function __construct(FirebaseAuth $auth)
@@ -20,20 +16,24 @@ class CheckAdmin
 
     public function handle($request, Closure $next)
     {
-        // Obtener el UID del usuario autenticado
-        $user = auth()->user();
-        $uid = $user->firebase_uid; // Asegúrate de que el UID está disponible
+        $decoded = $request->attributes->get('firebase_user');
 
-        // Verificar los claims del usuario en Firebase
+        if (!$decoded || !isset($decoded->sub)) {
+            return response()->json(['error' => 'Token inválido o usuario no autenticado'], 401);
+        }
+
+        $uid = $decoded->sub;
+
         try {
             $firebaseUser = $this->auth->getUser($uid);
-            if (isset($firebaseUser->customClaims['admin']) && $firebaseUser->customClaims['admin'] === true) {
+
+            if (($firebaseUser->customClaims['admin'] ?? false) === true) {
                 return $next($request);
             } else {
-                return response()->json(['error' => 'Acceso denegado. No eres un administrador.'], 403);
+                return response()->json(['error' => 'Acceso denegado. No eres admin'], 403);
             }
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Error al verificar el claim de admin: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Error al verificar claim: ' . $e->getMessage()], 500);
         }
     }
 }
