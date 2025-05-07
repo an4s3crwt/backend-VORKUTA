@@ -17,64 +17,67 @@ class FirebaseAuthMiddleware
     private const CACHE_TTL = 3600; // 1 hora
 
     public function handle(Request $request, Closure $next)
-    {
-        \Log::info('Inicio de middleware FirebaseAuth');
-        
-        // Obtener el encabezado de autorización
-        $authHeader = $request->header('Authorization');
-        \Log::debug('Encabezado Authorization:', ['header' => $authHeader]);
+{
+    \Log::info('Inicio de middleware FirebaseAuth');
+    
+    // Obtener el encabezado de autorización
+    $authHeader = $request->header('Authorization');
+    \Log::debug('Encabezado Authorization:', ['header' => $authHeader]);
 
-        // Obtener el token
-        $token = $request->bearerToken();
-        \Log::debug('Token extraído:', ['token' => $token ? 'presente' : 'ausente']);
+    // Obtener el token
+    $token = $request->bearerToken();
+    \Log::debug('Token extraído:', ['token' => $token ? 'presente' : 'ausente']);
 
-        // Si no hay token, devolver un error
-        if (!$token) {
-            \Log::warning('Token no proporcionado');
-            return response()->json(['error' => 'Token requerido'], 401);
-        }
-
-        try {
-            \Log::debug('Intentando decodificar token...');
-            $publicKey = $this->getFirebasePublicKey($token);
-            
-            // Aumentar leeway para pruebas
-            JWT::$leeway = 3600; // 1 hora
-            
-            // Decodificar el token de Firebase
-            $decodedToken = JWT::decode($token, $publicKey);
-            
-            \Log::info('Token decodificado correctamente', [
-                'uid' => $decodedToken->sub ?? null,
-                'issuer' => $decodedToken->iss ?? null,
-                'issued_at' => $decodedToken->iat ?? null,
-                'expiration' => $decodedToken->exp ?? null
-            ]);
-
-            // Agregar el token decodificado (claims) a la solicitud para su posterior uso
-            $request->attributes->add(['firebase_user' => $decodedToken]);
-
-            // Verificación del claim 'admin'
-            if (isset($decodedToken->admin) && $decodedToken->admin === true) {
-                return $next($request);  // Permitir el acceso si es un administrador
-            }
-
-            // Si el usuario no es admin, devolver un error de acceso
-            return response()->json(['error' => 'Acceso denegado. Solo administradores.'], 403); 
-
-        } catch (\Exception $e) {
-            \Log::error('Error en autenticación Firebase:', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
-            return response()->json([
-                'error' => 'Error de autenticación',
-                'message' => config('app.debug') ? $e->getMessage() : null,
-                'timestamp' => time() // Para verificar sincronización de tiempos
-            ], 401);
-        }
+    // Si no hay token, devolver un error
+    if (!$token) {
+        \Log::warning('Token no proporcionado');
+        return response()->json(['error' => 'Token requerido'], 401);
     }
+
+    try {
+        \Log::debug('Intentando decodificar token...');
+        $publicKey = $this->getFirebasePublicKey($token);
+        
+        // Aumentar leeway para pruebas
+        JWT::$leeway = 3600; // 1 hora
+        
+        // Decodificar el token de Firebase
+        $decodedToken = JWT::decode($token, $publicKey);
+        
+        \Log::info('Token decodificado correctamente', [
+            'uid' => $decodedToken->sub ?? null,
+            'issuer' => $decodedToken->iss ?? null,
+            'issued_at' => $decodedToken->iat ?? null,
+            'expiration' => $decodedToken->exp ?? null
+        ]);
+
+        // Agregar el token decodificado (claims) a la solicitud para su posterior uso
+        $request->attributes->add(['firebase_user' => $decodedToken]);
+
+        // Verificación del claim 'admin'
+        // Se permite el acceso tanto a usuarios como administradores
+        // Solo se bloquea el acceso si se requiere específicamente un admin
+        if (isset($decodedToken->admin) && $decodedToken->admin === true) {
+            return $next($request);  // Permitir el acceso si es un administrador
+        }
+
+        // Si el claim 'admin' no está presente o el usuario no es admin, se permite acceso a usuarios normales
+        return $next($request);  // Continuar si es usuario normal
+
+    } catch (\Exception $e) {
+        \Log::error('Error en autenticación Firebase:', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return response()->json([
+            'error' => 'Error de autenticación',
+            'message' => config('app.debug') ? $e->getMessage() : null,
+            'timestamp' => time() // Para verificar sincronización de tiempos
+        ], 401);
+    }
+}
+
 
     // Método para extraer el token del encabezado de la solicitud
     protected function extractToken(Request $request): ?string

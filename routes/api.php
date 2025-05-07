@@ -45,7 +45,7 @@ Route::prefix('v1')->group(function () {
     });
 
 
-    Route::middleware(['firebase.base', 'check.admin'])->group(function() {
+    Route::middleware(['firebase.auth', 'check.admin'])->group(function() {
         Route::get('/admin/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
         Route::get('/users', [\App\Http\Controllers\Admin\AdminUserController::class, 'index']);
         Route::get('/users/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'show']);

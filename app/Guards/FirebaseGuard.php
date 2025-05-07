@@ -33,37 +33,31 @@ class FirebaseGuard implements Guard
             $factory = (new Factory())
                 ->withServiceAccount(config('firebase.projects.app.credentials'))
                 ->withProjectId(env('FIREBASE_PROJECT_ID'));
-    
             $auth = $factory->createAuth();
             $verifiedIdToken = $auth->verifyIdToken($token);
     
             // Obtener los claims del token
-            $claims = $verifiedIdToken->claims(); // Cambiado: usar claims() en lugar de getClaim()
-            $uid = $claims->get('sub'); // 'sub' es el claim que contiene el UID del usuario
+            $claims = $verifiedIdToken->claims();
+            $uid = $claims->get('sub');  // UID del usuario
     
-            // Verificar que el token no fue emitido en el futuro
-            $currentTimestamp = time(); // Obtiene el timestamp actual en el servidor
-            $issuedAt = $claims->get('iat'); // Timestamp de cuando se emitió el token
-    
-            // Convertir el issuedAt de DateTimeImmutable a timestamp
-            $issuedAtTimestamp = $issuedAt instanceof \DateTimeImmutable ? $issuedAt->getTimestamp() : $issuedAt;
-    
-            // Leeway para permitir un margen de error de tiempo
-            $leeway = 300; // 5 minutes instead of 10 seconds
-    
-            // Si el token fue emitido más allá del tiempo actual + el margen de error, lo consideramos inválido
-            if ($issuedAtTimestamp > ($currentTimestamp + $leeway)) {
-                return null; // O maneja el error de la forma que prefieras
+            // Verificar si el usuario es admin, si es necesario
+            $isAdmin = $claims->get('admin', false);
+            if (!$isAdmin) {
+                // En vez de devolver un JsonResponse, retorna null
+                return null;
             }
     
-            // Recupera el usuario desde el proveedor con el uid
             $this->user = $this->provider->retrieveById($uid);
-        } catch (InvalidToken $e) { // Si el token es inválido, retorna null
+        } catch (InvalidToken $e) {
             return null;
         }
     
-        return $this->user; // Retorna el usuario autenticado
+        return $this->user;
     }
+
+  
+
+
     
     public function validate(array $credentials = [])
     {

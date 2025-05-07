@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Log;
 
 class OpenSkyController extends Controller
 {
-    public function getStates()
+    public function getStatesAll()
     {
         $response = Http::withBasicAuth(env('OPENSKY_USERNAME'), env('OPENSKY_PASSWORD'))
             ->get('https://opensky-network.org/api/states/all');
