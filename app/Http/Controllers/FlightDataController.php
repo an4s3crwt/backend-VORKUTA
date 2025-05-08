@@ -165,6 +165,30 @@ class FlightDataController extends Controller
     }
 
 
+    public function storeAirport(Request $request)
+    {
+        // Validación de los datos
+        $validatedData = $request->validate([
+            'name' => 'required|string|max:255',
+            'code' => 'required|string|max:10|unique:airports', // Validación para el código único
+            'country' => 'required|string|max:255',
+        ]);
+    
+        // Crear un nuevo aeropuerto
+        $airport = Airport::create([
+            'name' => $validatedData['name'],
+            'code' => $validatedData['code'],
+            'country' => $validatedData['country'],
+        ]);
+    
+        // Respuesta en JSON para el frontend
+        return response()->json([
+            'message' => 'Airport created successfully',
+            'airport' => $airport
+        ], 201);
+    }
+
+
 
 
 }

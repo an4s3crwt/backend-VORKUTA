@@ -12,24 +12,30 @@ class OpenSkyController extends Controller
     {
         $response = Http::withBasicAuth(env('OPENSKY_USERNAME'), env('OPENSKY_PASSWORD'))
             ->get('https://opensky-network.org/api/states/all');
-    
+
         if ($response->failed()) {
             return response()->json(['error' => 'Failed to fetch flight data'], 500);
         }
-    
+
         $data = $response->json();
+
+
+        $filteredStates = collect($data['states'])
+        ->filter(function ($flight) {
+            return $flight[0] && $flight[1] && $flight[5] && $flight[6]; // ICAO24, callsign, lat, lon
+        })
+        ->take(200)
+        ->values()
+        ->all();
     
-        // Solo filtrar por tener coordenadas
-        $filteredStates = array_filter($data['states'] ?? [], function ($state) {
-            return isset($state[5], $state[6]) && $state[5] !== null && $state[6] !== null;
-        });
-    
+
+
         return response()->json([
             'time' => $data['time'] ?? time(),
             'states' => array_values($filteredStates), // reindexar
         ]);
     }
-    
+
     /**
      * Método para frontend: retorna datos en tiempo real ya filtrados y reducidos
      */
@@ -65,7 +71,7 @@ class OpenSkyController extends Controller
                 'states' => $filteredStates,
             ];
         } catch (\Exception $e) {
-            Log::error('Error en fetchLiveData: '.$e->getMessage());
+            Log::error('Error en fetchLiveData: ' . $e->getMessage());
             return null;
         }
     }
@@ -109,7 +115,7 @@ class OpenSkyController extends Controller
                 'timestamp' => $data['time']
             ]);
         } catch (\Exception $e) {
-            Log::error('Error en scanLiveData: '.$e->getMessage());
+            Log::error('Error en scanLiveData: ' . $e->getMessage());
             return response()->json(['error' => 'Error interno en escaneo'], 500);
         }
     }

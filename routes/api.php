@@ -5,7 +5,8 @@ use App\Http\Controllers\FlightDataController;
 use App\Http\Controllers\OpenSkyController;
 use App\Http\Controllers\UserPreferencesController;
 use App\Http\Controllers\SavedFlightController;
-
+use App\Http\Controllers\FlightViewController;
+use App\Http\Controllers\AirportController;
 
 Route::prefix('v1')->group(function () {
     // Proteger  el login con firebase.auth (pero sin el middleware de rol aún)
@@ -14,7 +15,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
 
     Route::post('/assign-admin/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'assignAdminClaim']);
-    Route::get('/verify-admin/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class,'verifyAdminClaim']);
+    Route::get('/verify-admin/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'verifyAdminClaim']);
     Route::post('create-first-admin', [\App\Http\Controllers\Admin\AdminUserController::class, 'createFirstAdmin']);
 
     // Rutas protegidas con middleware Firebase
@@ -26,7 +27,7 @@ Route::prefix('v1')->group(function () {
 
         // Vuelos guardados
         Route::post('/saved-flights', [SavedFlightController::class, 'store']);
-        Route::get('/saved-flights', action: [SavedFlightController::class,'index']);
+        Route::get('/saved-flights', action: [SavedFlightController::class, 'index']);
         // Gestión de vuelos
         Route::prefix('flights')->group(function () {
             Route::get('/', [FlightDataController::class, 'getAllData']);
@@ -39,13 +40,16 @@ Route::prefix('v1')->group(function () {
         // OpenSky
         Route::get('/opensky/states', [OpenSkyController::class, 'getStatesAll']);
 
+        //FlightView
+        Route::post('/flight/view', [FlightViewController::class, 'storeFlightView']);
+
         // Preferencias
         Route::get('/preferences', [UserPreferencesController::class, 'index']);
         Route::post('/preferences', [UserPreferencesController::class, 'update']);
     });
 
 
-    Route::middleware(['firebase.auth', 'check.admin'])->group(function() {
+    Route::middleware(['firebase.auth', 'check.admin'])->group(function () {
         Route::get('/admin/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
         Route::get('/users', [\App\Http\Controllers\Admin\AdminUserController::class, 'index']);
         Route::get('/users/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'show']);
@@ -53,7 +57,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/users/{uid}/ban', [\App\Http\Controllers\Admin\AdminUserController::class, 'ban']);
 
         Route::post('/admin/users/{uid}/assign-admin', [\App\Http\Controllers\Admin\AdminUserController::class, 'assignAdminRole']);
-    
+
         Route::get('/logs', [\App\Http\Controllers\Admin\AdminLogController::class, 'index']);
 
     });
