@@ -18,7 +18,8 @@ class User extends Authenticatable
         'password',
         'firebase_uid',
         'firebase_data', // For storing additional Firebase user data
-        'photo_url'      // If you want to store Firebase profile photo
+        'photo_url',      // If you want to store Firebase profile photo
+        'role',
     ];
 
     protected $hidden = [
@@ -64,4 +65,8 @@ class User extends Authenticatable
             return false;
         }
     }
+
+    protected $attributes = [
+        'role' => 'user', // Valor por defecto
+    ];
 }
