@@ -1,6 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Laravel\Telescope\Telescope;
+
+
 
 /*
 |--------------------------------------------------------------------------
@@ -18,3 +21,11 @@ use Illuminate\Support\Facades\Route;
 Route::get('/sanctum/csrf-cookie', function () {
     return response()->json(['message' => 'CSRF cookie set']);
 });
+
+
+
+// Registra las rutas de Telescope solo si está habilitado y el usuario tiene permiso
+if (config('telescope.enabled')) {
+    // In newer versions, Telescope routes are auto-registered in the TelescopeServiceProvider.
+    // Ensure the TelescopeServiceProvider is properly configured.
+}

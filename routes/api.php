@@ -52,9 +52,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['firebase.auth', 'check.admin'])->group(function () {
         Route::get('/admin/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
         Route::get('/users', [\App\Http\Controllers\Admin\AdminUserController::class, 'index']);
-        Route::get('/users/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'show']);
-        Route::delete('/users/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'destroy']);
-        Route::post('/users/{uid}/ban', [\App\Http\Controllers\Admin\AdminUserController::class, 'ban']);
+        Route::get('/admin/recent-users', [\App\Http\Controllers\Admin\AdminUserController::class, 'getRecentUsers']);
 
         Route::post('/admin/users/{uid}/assign-admin', [\App\Http\Controllers\Admin\AdminUserController::class, 'assignAdminRole']);
 

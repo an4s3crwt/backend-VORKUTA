@@ -165,5 +165,16 @@ class AdminUserController extends Controller
             return response()->json(['error' => 'Error al verificar los claims: ' . $e->getMessage()], 500);
         }
     }
+
+     // Fetch recent user registrations
+     public function getRecentUsers()
+     {
+         // Get the most recent users, sorted by registration date (descending order)
+         $recentUsers = User::orderBy('created_at', 'desc')
+                            ->limit(10)  // Limit to the 10 most recent users
+                            ->get(['id', 'name', 'email', 'created_at']);  // Select relevant fields
+ 
+         return response()->json($recentUsers);
+     }
     
 }
