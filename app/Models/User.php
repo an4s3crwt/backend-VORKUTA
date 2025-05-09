@@ -69,4 +69,10 @@ class User extends Authenticatable
     protected $attributes = [
         'role' => 'user', // Valor por defecto
     ];
+
+    public function savedFlights()
+{
+    return $this->hasMany(SavedFlight::class, 'firebase_uid', 'firebase_uid');
+}
+
 }

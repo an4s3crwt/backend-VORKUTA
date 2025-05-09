@@ -9,10 +9,13 @@ class SavedFlight extends Model
     protected $table = 'saved_flights';
 
     protected $fillable = [
-        'user_uid',
+        'user_id',
         'flight_icao',
         'flight_data',
         'saved_at',
+        'firebase_uid',
+        'flight_number',
+        
     ];
 
     protected $casts = [
@@ -21,4 +24,9 @@ class SavedFlight extends Model
     ];
 
     public $timestamps = false;
+     // Relación con el modelo User usando firebase_uid
+     public function user()
+     {
+         return $this->belongsTo(User::class, 'firebase_uid', 'firebase_uid');
+     }
 }

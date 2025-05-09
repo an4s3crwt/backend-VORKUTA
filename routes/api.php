@@ -53,7 +53,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/admin/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
         Route::get('/users', [\App\Http\Controllers\Admin\AdminUserController::class, 'index']);
         Route::get('/admin/recent-users', [\App\Http\Controllers\Admin\AdminUserController::class, 'getRecentUsers']);
-
+        Route::get('/admin/saved-flights', [SavedFlightController::class, 'indexAll']); // Todos los vuelos guardados
         Route::post('/admin/users/{uid}/assign-admin', [\App\Http\Controllers\Admin\AdminUserController::class, 'assignAdminRole']);
 
         Route::get('/admin/logs', [\App\Http\Controllers\Admin\AdminLogController::class, 'performanceStats']);
