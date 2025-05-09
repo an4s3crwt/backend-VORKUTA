@@ -50,13 +50,22 @@ Route::prefix('v1')->group(function () {
 
 
     Route::middleware(['firebase.auth', 'check.admin'])->group(function () {
-        Route::get('/admin/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
+       
         Route::get('/users', [\App\Http\Controllers\Admin\AdminUserController::class, 'index']);
         Route::get('/admin/recent-users', [\App\Http\Controllers\Admin\AdminUserController::class, 'getRecentUsers']);
         Route::get('/admin/saved-flights', [SavedFlightController::class, 'indexAll']); // Todos los vuelos guardados
         Route::post('/admin/users/{uid}/assign-admin', [\App\Http\Controllers\Admin\AdminUserController::class, 'assignAdminRole']);
-
+        Route::get('/admin/api-metrics', [\App\Http\Controllers\Admin\AdminLogController::class, 'getApiMetrics']);
         Route::get('/admin/logs', [\App\Http\Controllers\Admin\AdminLogController::class, 'performanceStats']);
-
+        Route::get('/admin/system/cpu-usage', [\App\Http\Controllers\Admin\SystemMetricsController::class, 'cpuUsage']);
+        Route::get('/admin/system/memory-usage', [\App\Http\Controllers\Admin\SystemMetricsController::class, 'memoryUsage']);
+        Route::get('/admin/system/disk-usage', [\App\Http\Controllers\Admin\SystemMetricsController::class, 'diskUsage']);
     });
+
+
+    Route::middleware(['firebase.auth', 'check.admin', 'api.metrics'])->group(function () {
+      Route::get('/admin/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
+   
+    
+});
 });

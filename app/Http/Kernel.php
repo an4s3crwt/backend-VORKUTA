@@ -22,6 +22,7 @@ class Kernel extends HttpKernel
         \App\Http\Middleware\TrimStrings::class,
         \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
         \App\Http\Middleware\LogResponseTime::class,
+        \App\Http\Middleware\ApiMetrics::class,
     
     ];
 
@@ -43,6 +44,7 @@ class Kernel extends HttpKernel
           
             'throttle:api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            \App\Http\Middleware\ApiMetrics::class,
         ],
 
 
@@ -71,6 +73,7 @@ class Kernel extends HttpKernel
         'check.admin' => \App\Http\Middleware\CheckAdminFirebase::class,
         'check.user' => \App\Http\Middleware\CheckUserFirebase::class,
         'firebase.auth' => \App\Http\Middleware\FirebaseAuthMiddleware::class,
+        'api.metrics' => \App\Http\Middleware\ApiMetrics::class,
 
        
     ];
