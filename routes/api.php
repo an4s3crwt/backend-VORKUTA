@@ -58,7 +58,7 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/admin/users/{uid}/assign-admin', [\App\Http\Controllers\Admin\AdminUserController::class, 'assignAdminRole']);
 
-        Route::get('/logs', [\App\Http\Controllers\Admin\AdminLogController::class, 'index']);
+        Route::get('/admin/logs', [\App\Http\Controllers\Admin\AdminLogController::class, 'performanceStats']);
 
     });
 });
