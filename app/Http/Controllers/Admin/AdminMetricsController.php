@@ -3,49 +3,49 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Controllers\OpenSkyController;
-use Illuminate\Http\Request;
-use App\Models\User;
-use App\Models\SavedFlight; 
 use Illuminate\Support\Facades\DB;
-
 
 class AdminMetricsController extends Controller
 {
-  /**
-     * Mostrar las métricas del sistema.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
     public function index()
     {
-        try {
-            // Obtener los datos en vivo desde OpenSkyController
-            $openSkyController = new OpenSkyController();
-            $liveData = $openSkyController->fetchLiveData();
+        // Total de vuelos únicos (por callsign)
+        $totalFlights = DB::table('flight_views')
+            ->select('callsign')
+            ->distinct()
+            ->count();
 
-            // Verificar si los datos fueron obtenidos correctamente
-            if (!$liveData || !isset($liveData['states'])) {
-                return response()->json(['error' => 'No se pudieron obtener datos de OpenSky'], 500);
-            }
+        // Total de usuarios
+        $totalUsers = DB::table('users')->count();
 
-            // Contar el número de vuelos activos
-            $totalFlights = count($liveData['states']); // Esto da el número de vuelos activos
+        // Total de visualizaciones de vuelos
+        $totalViews = DB::table('flight_views')->count();
 
-            // Obtener el número total de usuarios desde la base de datos
-            $totalUsers = User::count();
+        // Usuarios con más visualizaciones
+        $topUsers = DB::table('flight_views')
+            ->join('users', 'flight_views.firebase_uid', '=', 'users.firebase_uid')
+            ->select('users.email as name', DB::raw('COUNT(*) as total_views'))
+            ->groupBy('users.email')
+            ->orderByDesc('total_views')
+            ->limit(10)
+            ->get();
 
-            // Obtener los usuarios activos (por ejemplo, los que se han conectado en los últimos 30 días)
-            // Aquí puedes usar tu propia lógica para determinar qué significa "activo"
-            $activeUsers = User::where('last_activity', '>=', now()->subDays(30))->count();
+        // Rutas más vistas
+        $topRoutes = DB::table('flight_views')
+            ->select('from_airport_code', 'to_airport_code', DB::raw('COUNT(*) as views'))
+            ->groupBy('from_airport_code', 'to_airport_code')
+            ->orderByDesc('views')
+            ->limit(10)
+            ->get();
 
-            return response()->json([
-                'total_users' => $totalUsers,
-                'active_users' => $activeUsers,
-                'total_flights' => $totalFlights,
-            ], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Error al obtener las métricas: ' . $e->getMessage()], 500);
-        }
+        return response()->json([
+            'flights' => [
+                'total_views' => $totalViews,
+                'by_user' => $topUsers,
+                'top_routes' => $topRoutes,
+                'total' => $totalFlights,
+            ],
+            'total_users' => $totalUsers,
+        ]);
     }
 }

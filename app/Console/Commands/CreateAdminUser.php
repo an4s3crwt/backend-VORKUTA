@@ -39,7 +39,7 @@ public function handle()
             'email' => $email,
             'firebase_uid' => $firebaseUser->uid,
             'password' => bcrypt($password),
-            'role' => 'admin' // Mantener consistencia con tu DB
+            'role' => 'admin' // Mantener consistencia con  DB
         ]);
 
         $this->info("Usuario ADMIN creado exitosamente en ambos sistemas");

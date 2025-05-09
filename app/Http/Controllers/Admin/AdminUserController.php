@@ -18,6 +18,58 @@ class AdminUserController extends Controller
         $this->auth = $auth;
     }
 
+    public function index()
+    {
+        try {
+            // Obtener todos los usuarios de Firebase (hasta 1000)
+            $firebaseUsers = collect($this->auth->listUsers(1000));
+    
+            // Contar los usuarios totales
+            $totalUsers = $firebaseUsers->count();
+    
+            // Filtrar usuarios activos (por ejemplo, verificar si tienen un claim 'active')
+            $activeUsers = $firebaseUsers->filter(function ($user) {
+                // Puedes agregar la lógica para verificar si el usuario está activo
+                return isset($user->customClaims['active']) && $user->customClaims['active'] === true;
+            });
+    
+            // Filtrar usuarios baneados (por ejemplo, verificar si tienen un claim 'banned')
+            $bannedUsers = $firebaseUsers->filter(function ($user) {
+                return isset($user->customClaims['banned']) && $user->customClaims['banned'] === true;
+            });
+    
+            // Filtrar solo los administradores
+            $adminUsers = $firebaseUsers->filter(function ($user) {
+                return isset($user->customClaims['admin']) && $user->customClaims['admin'] === true;
+            });
+    
+            // Mapeo de administradores para agregar los detalles desde la base de datos
+            $adminUsers = $adminUsers->map(function ($user) {
+                $localUser = User::where('firebase_uid', $user->uid)->first();
+                return [
+                    'firebase_uid' => $user->uid,
+                    'email' => $user->email,
+                    'name' => $localUser->name ?? null,
+                    'role' => $localUser->role ?? 'N/A',
+                    'created_at' => $localUser->created_at ?? null,
+                ];
+            })->values();
+    
+            // Devolver los datos de los usuarios junto con los conteos
+            return response()->json([
+                'total' => $totalUsers,
+                'active' => $activeUsers->count(),
+                'banned' => $bannedUsers->count(),
+                'admins' => $adminUsers->count(),
+                'admin_users' => $adminUsers, // Agregar los datos de los administradores
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Error al obtener los usuarios: ' . $e->getMessage());
+            return response()->json(['error' => 'No se pudieron obtener los usuarios.'], 500);
+        }
+    }
+    
+
     // Método para crear el primer admin
     public function createFirstAdmin(Request $request)
     {
@@ -113,4 +165,5 @@ class AdminUserController extends Controller
             return response()->json(['error' => 'Error al verificar los claims: ' . $e->getMessage()], 500);
         }
     }
+    
 }
