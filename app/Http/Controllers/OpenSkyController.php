@@ -24,7 +24,7 @@ class OpenSkyController extends Controller
         ->filter(function ($flight) {
             return $flight[0] && $flight[1] && $flight[5] && $flight[6]; // ICAO24, callsign, lat, lon
         })
-        ->take(200)
+        ->take(1000)
         ->values()
         ->all();
     

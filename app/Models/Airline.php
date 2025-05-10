@@ -5,20 +5,21 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Airport extends Model
+class Airline extends Model
 {
-      use HasFactory;
+    use HasFactory;
 
     protected $fillable = [
         'name',
         'icao',
         'iata',
-        'city',
+        'callsign',
         'country',
-        'latitude',
-        'longitude',
+        'active'
     ];
- 
 
-
+    public function flights()
+    {
+        return $this->hasMany(Flight::class);
+    }
 }
