@@ -8,6 +8,10 @@ use App\Http\Controllers\SavedFlightController;
 use App\Http\Controllers\FlightViewController;
 use App\Http\Controllers\AirportController;
 
+use App\Http\Controllers\AirlineController;
+
+
+
 Route::prefix('v1')->group(function () {
     // Proteger  el login con firebase.auth (pero sin el middleware de rol aún)
     Route::middleware(['firebase.auth'])->post('/login', [AuthController::class, 'login']);
@@ -24,6 +28,11 @@ Route::prefix('v1')->group(function () {
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
 
+        Route::get('/airlines', [AirlineController::class, 'index']);
+        Route::get('/airlines/{id}', [AirlineController::class, 'show']);
+
+        Route::get('/airports', [AirportController::class, 'index']);
+        Route::get('/airports/{id}', [AirportController::class, 'show']);
 
         // Vuelos guardados
         Route::post('/saved-flights', [SavedFlightController::class, 'store']);
@@ -50,7 +59,7 @@ Route::prefix('v1')->group(function () {
 
 
     Route::middleware(['firebase.auth', 'check.admin'])->group(function () {
-       
+
         Route::get('/users', [\App\Http\Controllers\Admin\AdminUserController::class, 'index']);
         Route::get('/admin/recent-users', [\App\Http\Controllers\Admin\AdminUserController::class, 'getRecentUsers']);
         Route::get('/admin/saved-flights', [SavedFlightController::class, 'indexAll']); // Todos los vuelos guardados
@@ -64,8 +73,8 @@ Route::prefix('v1')->group(function () {
 
 
     Route::middleware(['firebase.auth', 'check.admin', 'api.metrics'])->group(function () {
-      Route::get('/admin/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
-   
-    
-});
+        Route::get('/admin/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
+
+
+    });
 });
