@@ -49,6 +49,11 @@ Route::prefix('v1')->group(function () {
         // OpenSky
         Route::get('/opensky/states', [OpenSkyController::class, 'getStatesAll']);
 
+        //Airports and Airlines
+        Route::get('/airports', [AirportController::class, 'index']);
+Route::get('/airlines', [AirlineController::class, 'index']);
+
+
         //FlightView
         Route::post('/flight/view', [FlightViewController::class, 'storeFlightView']);
 
