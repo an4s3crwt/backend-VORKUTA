@@ -45,6 +45,9 @@ Route::prefix('v1')->group(function () {
             Route::post('/predict-delay', [FlightDataController::class, 'predictDelay']);
 
         });
+      
+
+
 
         // OpenSky
         Route::get('/opensky/states', [OpenSkyController::class, 'getStatesAll']);
