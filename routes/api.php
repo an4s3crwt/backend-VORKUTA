@@ -32,7 +32,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/airlines/{id}', [AirlineController::class, 'show']);
 
         Route::get('/airports', [AirportController::class, 'index']);
-        Route::get('/airports/{id}', [AirportController::class, 'show']);
+        Route::get('/airports/{iata_code}', [AirportController::class, 'show']);
+
 
         // Vuelos guardados
         Route::post('/saved-flights', [SavedFlightController::class, 'store']);
@@ -45,17 +46,27 @@ Route::prefix('v1')->group(function () {
             Route::post('/predict-delay', [FlightDataController::class, 'predictDelay']);
 
         });
-      
+
 
 
 
         // OpenSky
         Route::get('/opensky/states', [OpenSkyController::class, 'getStatesAll']);
 
+
+
+        //
+        Route::get('/flights/airport/{icao_code}', [OpenSkyController::class, 'getLiveFlightsToAirport']);
+
         //Airports and Airlines
         Route::get('/airports', [AirportController::class, 'index']);
-Route::get('/airlines', [AirlineController::class, 'index']);
+        Route::get('/airports/{icao_code}', [OpenSkyController::class, 'getAirportInfo']);
+        Route::get('/airlines', [AirlineController::class, 'index']);
 
+
+
+        //
+        Route::get('/airport-info/{icao_code}', [AirportController::class, 'show']);
 
         //FlightView
         Route::post('/flight/view', [FlightViewController::class, 'storeFlightView']);
