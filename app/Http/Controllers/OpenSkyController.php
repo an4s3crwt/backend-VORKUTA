@@ -40,42 +40,54 @@ class OpenSkyController extends Controller
     /**
      * Método para obtener todos los estados de vuelos (requiere autenticación Firebase)
      */
-    public function getStatesAll(Request $request)
-    {
-        try {
-            $response = Http::withBasicAuth(env('OPENSKY_USERNAME'), env('OPENSKY_PASSWORD'))
-                ->timeout(15)
-                ->get('https://opensky-network.org/api/states/all');
+   public function getStatesAll(Request $request)
+{
+    try {
+        $params = [];
 
-            if ($response->failed()) {
-                Log::error('OpenSky API failed: ' . $response->status());
-                return response()->json(['error' => 'Failed to fetch flight data'], 500);
-            }
-
-            $data = $response->json();
-
-            if (!isset($data['states'])) {
-                return response()->json(['error' => 'Invalid data format from API'], 500);
-            }
-
-            $filteredStates = collect($data['states'])
-                ->filter(function ($flight) {
-                    return $flight[0] && $flight[1] && $flight[5] && $flight[6]; // ICAO24, callsign, lat, lon
-                })
-                ->take(1000)
-                ->values()
-                ->all();
-
-            return response()->json([
-                'time' => $data['time'] ?? time(),
-                'states' => array_values($filteredStates),
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('getStatesAll error: ' . $e->getMessage());
-            return response()->json(['error' => 'Internal server error'], 500);
+        if ($request->has(['lamin', 'lamax', 'lomin', 'lomax'])) {
+            $params = [
+                'lamin' => $request->input('lamin'),
+                'lamax' => $request->input('lamax'),
+                'lomin' => $request->input('lomin'),
+                'lomax' => $request->input('lomax'),
+            ];
         }
+
+        $response = Http::withBasicAuth(env('OPENSKY_USERNAME'), env('OPENSKY_PASSWORD'))
+            ->timeout(15)
+            ->get('https://opensky-network.org/api/states/all', $params);
+
+        if ($response->failed()) {
+            Log::error('OpenSky API failed: ' . $response->status());
+            return response()->json(['error' => 'Failed to fetch flight data'], 500);
+        }
+
+        $data = $response->json();
+
+        if (!isset($data['states'])) {
+            return response()->json(['error' => 'Invalid data format from API'], 500);
+        }
+
+        $filteredStates = collect($data['states'])
+            ->filter(function ($flight) {
+                return $flight[0] && $flight[1] && $flight[5] && $flight[6]; // ICAO24, callsign, lat, lon
+            })
+            ->take(200)
+            ->values()
+            ->all();
+
+        return response()->json([
+            'time' => $data['time'] ?? time(),
+            'states' => $filteredStates,
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('getStatesAll error: ' . $e->getMessage());
+        return response()->json(['error' => 'Internal server error'], 500);
     }
+}
+
 
     /**
      * Método para obtener datos en tiempo real filtrados
