@@ -12,8 +12,7 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-   $schedule->command('flights:import-live')->everyTenMinutes();
-
+        $schedule->job(new \App\Jobs\UpdateFlightsJob)->everyThirtyMinutes();
     }
 
     /**
