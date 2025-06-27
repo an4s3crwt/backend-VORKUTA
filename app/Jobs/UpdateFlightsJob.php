@@ -16,6 +16,8 @@ class UpdateFlightsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    private const AVERAGE_SPEED_KPH = 850; // Velocidad promedio configurable
+
     private function haversine($lat1, $lon1, $lat2, $lon2)
     {
         $earthRadius = 6371;
@@ -43,6 +45,9 @@ class UpdateFlightsJob implements ShouldQueue
 
         $states = $response->json()['states'] ?? [];
 
+        // Limitar la cantidad de vuelos por petición para no sobrecargar
+        $states = array_slice($states, 0, 3000);
+
         foreach ($states as $flightData) {
             $icao24 = strtolower($flightData[0]);
             $callsign = trim($flightData[1]);
@@ -56,145 +61,25 @@ class UpdateFlightsJob implements ShouldQueue
 
             Log::info("Procesando vuelo: $icao24 ($callsign) - País: $origin_country");
 
-            $flight = Flight::firstOrNew(['icao24' => $icao24]);
+            $flight = new Flight();
+            $flight->icao24 = $icao24;
             $flight->callsign = $callsign;
             $flight->origin_country = $origin_country;
             $flight->last_contact = $last_contact;
-            $flight->last_latitude = $latitude;
-            $flight->last_longitude = $longitude;
+
+            if (is_numeric($latitude)) $flight->last_latitude = $latitude;
+            if (is_numeric($longitude)) $flight->last_longitude = $longitude;
             $flight->last_altitude = $altitude;
-
-            if (is_null($flight->departure_time)) {
-                if ($flight->last_on_ground === true && $on_ground === false && $velocity > 50) {
-                    $flight->departure_time = $last_contact;
-                    $flight->departure_latitude = $latitude;
-                    $flight->departure_longitude = $longitude;
-                    Log::info("Despegue detectado para $callsign a $last_contact");
-                }
-            }
-
-            if (!is_null($flight->departure_time) && is_null($flight->arrival_time)) {
-                if ($on_ground === true && $velocity < 10 && (time() - $last_contact) > 300) {
-                    $flight->arrival_time = $last_contact;
-                    $flight->arrival_latitude = $latitude;
-                    $flight->arrival_longitude = $longitude;
-                    Log::info("Aterrizaje detectado para $callsign a $last_contact");
-                }
-            }
-
-            if ($callsign && (is_null($flight->departure_airport) || is_null($flight->arrival_airport))) {
-                try {
-                    $cleanCallsign = preg_replace('/\s+/', '', $callsign);
-                    Log::debug("Limpieza de callsign: '$callsign' → '$cleanCallsign'");
-
-                    $routeData = Cache::remember("hexdb_route_{$cleanCallsign}", 3600, function () use ($cleanCallsign) {
-                        $url = "https://hexdb.io/api/v1/route/icao/{$cleanCallsign}";
-                        Log::debug("Consultando ruta en HexDB: $url");
-                        $response = Http::timeout(10)->get($url);
-                        Log::debug("Respuesta de HexDB para $cleanCallsign: " . $response->body());
-                        return $response->successful() ? $response->json() : null;
-                    });
-
-                    if ($routeData && isset($routeData['route']) && str_contains($routeData['route'], '-')) {
-                        [$departureCode, $arrivalCode] = explode('-', $routeData['route'], 2);
-                        Log::info("Ruta obtenida para $callsign: $departureCode -> $arrivalCode");
-
-                        $flight->departure_airport = $flight->departure_airport ?? substr(trim($departureCode), 0, 4);
-                        $flight->arrival_airport = $flight->arrival_airport ?? substr(trim($arrivalCode), 0, 4);
-
-                        $getAirportData = function ($icaoCode) {
-                            if (empty($icaoCode))
-                                return null;
-                            return Cache::remember("hexdb_airport_{$icaoCode}", 86400, function () use ($icaoCode) {
-                                try {
-                                    $url = "https://hexdb.io/api/v1/airport/icao/{$icaoCode}";
-                                    Log::debug("Consultando datos de aeropuerto en HexDB: $url");
-                                    $response = Http::timeout(8)->get($url);
-                                    if ($response->successful()) {
-                                        $data = $response->json();
-                                        if (isset($data['latitude'], $data['longitude']) && is_numeric($data['latitude']) && is_numeric($data['longitude'])) {
-                                            return $data;
-                                        }
-                                    }
-                                    return null;
-                                } catch (\Exception $e) {
-                                    Log::warning("Error obteniendo aeropuerto $icaoCode: " . $e->getMessage());
-                                    return null;
-                                }
-                            });
-                        };
-
-                        if (is_null($flight->departure_latitude) || is_null($flight->departure_longitude)) {
-                            $departureData = $getAirportData($departureCode);
-                            if ($departureData) {
-                                $flight->departure_latitude = $departureData['latitude'];
-                                $flight->departure_longitude = $departureData['longitude'];
-                            } else {
-                                Log::warning("No se encontraron coordenadas para el aeropuerto de salida $departureCode");
-                            }
-                        }
-
-                        if (is_null($flight->arrival_latitude) || is_null($flight->arrival_longitude)) {
-                            $arrivalData = $getAirportData($arrivalCode);
-                            if ($arrivalData) {
-                                $flight->arrival_latitude = $arrivalData['latitude'];
-                                $flight->arrival_longitude = $arrivalData['longitude'];
-                            } else {
-                                Log::warning("No se encontraron coordenadas para el aeropuerto de llegada $arrivalCode");
-                            }
-                        }
-                    } else {
-                        Log::warning("No se pudo determinar ruta para $callsign. Datos devueltos: " . json_encode($routeData));
-                    }
-                } catch (\Exception $e) {
-                    Log::error("Error procesando HexDB para $callsign: " . $e->getMessage());
-                }
-            }
-
-            if (
-                $flight->departure_latitude !== null && $flight->departure_longitude !== null &&
-                $flight->arrival_latitude !== null && $flight->arrival_longitude !== null
-            ) {
-                $distanceKm = $this->haversine(
-                    $flight->departure_latitude,
-                    $flight->departure_longitude,
-                    $flight->arrival_latitude,
-                    $flight->arrival_longitude
-                );
-
-                $avgSpeedKps = 850 / 3600;
-                $durationExpected = $distanceKm / $avgSpeedKps;
-                $flight->duration_expected = $durationExpected;
-
-                if (!is_null($flight->departure_time) && !is_null($flight->arrival_time)) {
-                    $durationReal = $flight->arrival_time - $flight->departure_time;
-                    $flight->duration_real = $durationReal;
-                    $flight->delayed = $durationReal > ($durationExpected + 900);
-                    Log::info("Vuelo $callsign duración real: $durationReal, esperada: $durationExpected");
-                }
-            } else {
-                Log::info("No se pudo calcular duración para $callsign por falta de coordenadas | From: {$flight->departure_airport} To: {$flight->arrival_airport}");
-            }
-
             $flight->last_on_ground = $on_ground;
             $flight->last_velocity = $velocity;
 
-            if (
-                $flight->departure_airport !== null &&
-                $flight->arrival_airport !== null &&
-                $flight->departure_latitude !== null &&
-                $flight->departure_longitude !== null &&
-                $flight->arrival_latitude !== null &&
-                $flight->arrival_longitude !== null
-            ) {
-                if ($flight->isDirty()) {
-                    $flight->save();
-                    Log::info("Vuelo guardado: $callsign - con coordenadas completas");
-                }
-            } else {
-                Log::info("Vuelo omitido por falta de coordenadas completas: $callsign");
-            }
+            // Como quieres solo insertar, no actualizar, no chequeamos ni modificamos otros campos aquí,
+            // esos cálculos los harás después procesando la base de datos.
 
+            // Guardamos vuelo sin actualizar previos
+            $flight->save();
+
+            Log::info("Vuelo guardado: $callsign");
         }
     }
 }
