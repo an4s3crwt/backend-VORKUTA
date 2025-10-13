@@ -17,8 +17,8 @@ class AuthController extends Controller
     {
         $this->firebaseAuth = $firebaseAuth;
         
-        // Aplicar middleware de autenticación y roles según sea necesario
-        $this->middleware('firebase.auth'); // Verifica que el usuario esté autenticado
+         // Aplica autenticación solo a los métodos que la necesitan
+    $this->middleware('firebase.auth')->except(['register']);  // Verifica que el usuario esté autenticado
         $this->middleware('check.user')->only(['login', 'me']); // Verifica que el usuario esté autenticado
         $this->middleware('check.admin')->only(['adminDashboard']); // Solo administradores pueden acceder a esto
     }

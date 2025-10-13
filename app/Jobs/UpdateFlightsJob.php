@@ -46,7 +46,7 @@ class UpdateFlightsJob implements ShouldQueue
         $states = $response->json()['states'] ?? [];
 
         // Limitar la cantidad de vuelos por petición para no sobrecargar
-        $states = array_slice($states, 0, 3000);
+        $states = array_slice($states, 0, 2000);
 
         foreach ($states as $flightData) {
             $icao24 = strtolower($flightData[0]);
