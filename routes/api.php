@@ -7,8 +7,9 @@ use App\Http\Controllers\UserPreferencesController;
 use App\Http\Controllers\SavedFlightController;
 use App\Http\Controllers\FlightViewController;
 use App\Http\Controllers\AirportController;
-
+use App\Http\Controllers\DelayController;
 use App\Http\Controllers\AirlineController;
+
 
 
 
@@ -17,6 +18,8 @@ Route::prefix('v1')->group(function () {
     return response()->json([
         'server_time' => now()->toISOString()
     ]);
+
+    
 });
     // Proteger  el login con firebase.auth (pero sin el middleware de rol aún)
     Route::middleware(['firebase.auth'])->post('/login', [AuthController::class, 'login']);
@@ -29,6 +32,8 @@ Route::prefix('v1')->group(function () {
 
     // Rutas protegidas con middleware Firebase
     Route::middleware(['firebase.auth', 'check.user'])->group(function () {
+Route::post('/predict-delay', [DelayController::class, 'predict']);
+ 
         // Información del usuario
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -48,8 +53,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/', [FlightDataController::class, 'getAllData']);
             Route::post('/', [FlightDataController::class, 'store']);
             Route::get('/nearby', [FlightDataController::class, 'getNearbyFlights']);
-            Route::post('/predict-delay', [FlightDataController::class, 'predictDelay']);
-
+       
         });
 
 
