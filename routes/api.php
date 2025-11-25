@@ -13,6 +13,11 @@ use App\Http\Controllers\AirlineController;
 
 
 Route::prefix('v1')->group(function () {
+    Route::get('/server-time', function () {
+    return response()->json([
+        'server_time' => now()->toISOString()
+    ]);
+});
     // Proteger  el login con firebase.auth (pero sin el middleware de rol aún)
     Route::middleware(['firebase.auth'])->post('/login', [AuthController::class, 'login']);
 
