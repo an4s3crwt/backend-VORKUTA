@@ -9,7 +9,9 @@ use App\Http\Controllers\FlightViewController;
 use App\Http\Controllers\AirportController;
 use App\Http\Controllers\DelayController;
 use App\Http\Controllers\AirlineController;
+use App\Http\Controllers\AirportStatsController;
 
+use App\Http\Controllers\FlightController;
 
 
 
@@ -33,29 +35,21 @@ Route::prefix('v1')->group(function () {
     // Rutas protegidas con middleware Firebase
     Route::middleware(['firebase.auth', 'check.user'])->group(function () {
 Route::post('/predict-delay', [DelayController::class, 'predict']);
- 
+Route::get('/flight-live/{icao}', [FlightController::class, 'getFlightData']);
+// 👇 NUEVA RUTA: Para el Dashboard (Lista completa)
+    Route::get('/flights/live', [FlightController::class, 'getAllFlights']);
+    Route::get('/flights/area', [FlightController::class, 'getFlightsByArea']);
+
+    Route::get('/flights/nearby', [FlightController::class, 'getNearbyFlights']);
+ // NUEVA RUTA: Estadísticas para el Dashboard del Aeropuerto
+   
         // Información del usuario
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
 
-        Route::get('/airlines', [AirlineController::class, 'index']);
-        Route::get('/airlines/{id}', [AirlineController::class, 'show']);
-
-        Route::get('/airports', [AirportController::class, 'index']);
-        Route::get('/airports/{iata_code}', [AirportController::class, 'show']);
-
-
-        // Vuelos guardados
-        Route::post('/saved-flights', [SavedFlightController::class, 'store']);
-        Route::get('/saved-flights', action: [SavedFlightController::class, 'index']);
-        // Gestión de vuelos
-        Route::prefix('flights')->group(function () {
-            Route::get('/', [FlightDataController::class, 'getAllData']);
-            Route::post('/', [FlightDataController::class, 'store']);
-            Route::get('/nearby', [FlightDataController::class, 'getNearbyFlights']);
        
-        });
-
+     
+    
 
 
 
