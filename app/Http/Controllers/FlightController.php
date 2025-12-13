@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use App\Http\Controllers\DB;
 
 class FlightController extends Controller
 {
-    // Función 1: Para ver el detalle de UN vuelo (Ya la tenías)
+   // Función 1: Para ver el detalle de UN vuelo (Ya la tenías)
     public function getFlightData($icao)
     {
+        // 1. Petición a OpenSky (Tu código original)
         $url = 'https://opensky-network.org/api/states/all';
 
         $response = Http::withBasicAuth(
@@ -22,6 +24,26 @@ class FlightController extends Controller
         if ($response->failed()) {
             return response()->json(['error' => 'Error OpenSky'], $response->status());
         }
+
+        // =========================================================
+        // 2. NUEVO: AUDITORÍA (Guardar en tabla 'logs')
+        // =========================================================
+        // Solo guardamos si hay un usuario logueado (auth()->id() no es null)
+        if (auth()->id()) {
+            try {
+                DB::table('logs')->insert([
+                    'user_id'    => auth()->id(),
+                    'action'     => 'view_flight', // Acción específica
+                    'details'    => "Usuario consultó el vuelo con ICAO: $icao",
+                    'ip_address' => request()->ip(), // Capturamos IP
+                    'level'      => 'info',
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $e) {
+                // Fallo silencioso del log para no molestar al usuario
+            }
+        }
+        // =========================================================
 
         return response()->json($response->json());
     }
@@ -79,7 +101,7 @@ class FlightController extends Controller
     }
 
 
-    // 👇 NUEVA FUNCIÓN: Vuelos cercanos (Radio)
+    // 👇NUEVA FUNCIÓN: Vuelos cercanos (Radio)
     public function getNearbyFlights(Request $request)
     {
         $request->validate([

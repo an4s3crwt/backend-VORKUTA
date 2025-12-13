@@ -10,19 +10,19 @@ use App\Http\Controllers\AirportController;
 use App\Http\Controllers\DelayController;
 use App\Http\Controllers\AirlineController;
 use App\Http\Controllers\AirportStatsController;
-
+use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\FlightController;
-
+use App\Jobs\FailOnPurpose;
 
 
 Route::prefix('v1')->group(function () {
     Route::get('/server-time', function () {
-    return response()->json([
-        'server_time' => now()->toISOString()
-    ]);
+        return response()->json([
+            'server_time' => now()->toISOString()
+        ]);
 
-    
-});
+
+    });
     // Proteger  el login con firebase.auth (pero sin el middleware de rol aún)
     Route::middleware(['firebase.auth'])->post('/login', [AuthController::class, 'login']);
 
@@ -34,22 +34,22 @@ Route::prefix('v1')->group(function () {
 
     // Rutas protegidas con middleware Firebase
     Route::middleware(['firebase.auth', 'check.user'])->group(function () {
-Route::post('/predict-delay', [DelayController::class, 'predict']);
-Route::get('/flight-live/{icao}', [FlightController::class, 'getFlightData']);
-// 👇 NUEVA RUTA: Para el Dashboard (Lista completa)
-    Route::get('/flights/live', [FlightController::class, 'getAllFlights']);
-    Route::get('/flights/area', [FlightController::class, 'getFlightsByArea']);
+        Route::post('/predict-delay', [DelayController::class, 'predict']);
+        Route::get('/flight-live/{icao}', [FlightController::class, 'getFlightData']);
+        //  NUEVA RUTA: Para el Dashboard (Lista completa)
+        Route::get('/flights/live', [FlightController::class, 'getAllFlights']);
+        Route::get('/flights/area', [FlightController::class, 'getFlightsByArea']);
 
-    Route::get('/flights/nearby', [FlightController::class, 'getNearbyFlights']);
- // NUEVA RUTA: Estadísticas para el Dashboard del Aeropuerto
-   
+        Route::get('/flights/nearby', [FlightController::class, 'getNearbyFlights']);
+        // NUEVA RUTA: Estadísticas para el Dashboard del Aeropuerto
+
         // Información del usuario
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
 
-       
-     
-    
+
+
+
 
 
 
@@ -80,23 +80,39 @@ Route::get('/flight-live/{icao}', [FlightController::class, 'getFlightData']);
     });
 
 
+    // =========================================================================
+    // --- ZONA ADMIN (LA TORRE DE CONTROL) ---
+    // Aquí conectamos el Dashboard de React con tus tablas SQL
+    // =========================================================================
     Route::middleware(['firebase.auth', 'check.admin'])->group(function () {
 
-        Route::get('/users', [\App\Http\Controllers\Admin\AdminUserController::class, 'index']);
-        Route::get('/admin/recent-users', [\App\Http\Controllers\Admin\AdminUserController::class, 'getRecentUsers']);
-        Route::get('/admin/saved-flights', [SavedFlightController::class, 'indexAll']); // Todos los vuelos guardados
-        Route::post('/admin/users/{uid}/assign-admin', [\App\Http\Controllers\Admin\AdminUserController::class, 'assignAdminRole']);
-        Route::get('/admin/api-metrics', [\App\Http\Controllers\Admin\AdminLogController::class, 'getApiMetrics']);
-        Route::get('/admin/logs', [\App\Http\Controllers\Admin\AdminLogController::class, 'performanceStats']);
+
+
+        Route::get('/debug/trigger-error', function () {
+            FailOnPurpose::dispatch();
+            return "Trabajo fallido enviado a la cola. Ahora ejecuta 'php artisan queue:work'";
+        });
+
+        // 1. ESTADÍSTICAS DE INFRAESTRUCTURA (Para las tarjetas de colores)
+        // Conecta con 'flight_positions', 'failed_jobs', 'telescope_entries'
+        Route::get('/admin/db-stats', [AdminDashboardController::class, 'getSystemStats']);
+
+        // 2. GESTIÓN DE USUARIOS (Para la tabla del Dashboard)
+        Route::get('/admin/users', [AdminDashboardController::class, 'indexUsers']);
+        Route::delete('/admin/users/{id}', [AdminDashboardController::class, 'deleteUser']); // Borrar
+        Route::patch('/admin/users/{id}/role', [AdminDashboardController::class, 'toggleRole']); // Cambiar Rol
+
+        Route::get('/admin/ai-logs', [AdminDashboardController::class, 'getAiLogs']);
+        Route::get('/admin/recent-users', [AdminDashboardController::class, 'getRecentUsers']);
+        Route::get('/admin/opensky-ping', [AdminDashboardController::class, 'checkOpenSkyStatus']);
+        // 3. TUS RUTAS EXISTENTES DE MÉTRICAS (Las mantenemos)
         Route::get('/admin/system/cpu-usage', [\App\Http\Controllers\Admin\SystemMetricsController::class, 'cpuUsage']);
         Route::get('/admin/system/memory-usage', [\App\Http\Controllers\Admin\SystemMetricsController::class, 'memoryUsage']);
-        Route::get('/admin/system/disk-usage', [\App\Http\Controllers\Admin\SystemMetricsController::class, 'diskUsage']);
+
+        // POST porque estamos cambiando el estado del servidor
+        Route::post('/admin/system/{action}', [AdminDashboardController::class, 'runSystemAction']);
     });
 
 
-    Route::middleware(['firebase.auth', 'check.admin', 'api.metrics'])->group(function () {
-        Route::get('/admin/metrics', [\App\Http\Controllers\Admin\AdminMetricsController::class, 'index']);
 
-
-    });
 });

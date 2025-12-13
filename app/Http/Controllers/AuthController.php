@@ -7,6 +7,7 @@ use App\Models\User;
 use Kreait\Firebase\Auth as FirebaseAuth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB; // <--- IMPRESCINDIBLE PARA ESCRIBIR EN LOGS
 use Kreait\Firebase\Exception\AuthException;
 
 class AuthController extends Controller
@@ -17,10 +18,10 @@ class AuthController extends Controller
     {
         $this->firebaseAuth = $firebaseAuth;
         
-         // Aplica autenticación solo a los métodos que la necesitan
-    $this->middleware('firebase.auth')->except(['register']);  // Verifica que el usuario esté autenticado
-        $this->middleware('check.user')->only(['login', 'me']); // Verifica que el usuario esté autenticado
-        $this->middleware('check.admin')->only(['adminDashboard']); // Solo administradores pueden acceder a esto
+        // Aplica autenticación solo a los métodos que la necesitan
+        $this->middleware('firebase.auth')->except(['register']);  
+        $this->middleware('check.user')->only(['login', 'me']); 
+        $this->middleware('check.admin')->only(['adminDashboard']); 
     }
 
     /**
@@ -45,6 +46,25 @@ class AuthController extends Controller
 
             // Actualizar datos del usuario desde Firebase
             $this->syncUserWithFirebase($user, $decoded);
+
+            // =========================================================
+            // NUEVO: AUDITORÍA DE SEGURIDAD (LLENAR TABLA LOGS)
+            // Esto hace que el Dashboard muestre IP y Estado "Online"
+            // =========================================================
+            try {
+                DB::table('logs')->insert([
+                    'user_id'    => $user->id,
+                    'action'     => 'login',
+                    'details'    => 'Autenticación exitosa vía Firebase Auth',
+                    'ip_address' => $request->ip(), // Captura la IP real del cliente
+                    'level'      => 'info',
+                    'created_at' => now(),
+                ]);
+            } catch (\Exception $logEx) {
+                // Si falla el log, no bloqueamos el login del usuario
+                Log::error("Error escribiendo log de auditoría: " . $logEx->getMessage());
+            }
+            // =========================================================
 
             return response()->json([
                 'message' => 'Login successful',
@@ -75,14 +95,13 @@ class AuthController extends Controller
         }
 
         try {
-            // Verificar que el Firebase UID existe
             $firebaseUser = $this->firebaseAuth->getUser($request->firebase_uid);
             
             $user = User::create([
                 'firebase_uid' => $request->firebase_uid,
                 'email' => $request->email,
                 'name' => $request->name,
-                'password' => bcrypt(uniqid()), // Contraseña aleatoria, ya que Firebase maneja la autenticación
+                'password' => bcrypt(uniqid()), 
                 'firebase_data' => [
                     'email_verified' => $firebaseUser->emailVerified,
                     'metadata' => [
@@ -90,6 +109,16 @@ class AuthController extends Controller
                         'last_login_at' => $firebaseUser->metadata->lastLoginAt,
                     ],
                 ],
+            ]);
+
+            // OPCIONAL: También guardamos log al registrarse
+            DB::table('logs')->insert([
+                'user_id'    => $user->id,
+                'action'     => 'register',
+                'details'    => 'Nuevo usuario registrado en el sistema',
+                'ip_address' => $request->ip(),
+                'level'      => 'info',
+                'created_at' => now(),
             ]);
 
             return response()->json([
@@ -123,24 +152,18 @@ class AuthController extends Controller
         }
     }
 
-    /**
-     * Logout - Frontend should handle Firebase logout
-     */
     public function logout(Request $request)
     {
         return response()->json(['message' => 'Logout successful']);
     }
 
-    /**
-     * Helper method to sync local user with Firebase data
-     */
     protected function syncUserWithFirebase(User $user, $decodedToken)
     {
         try {
             $firebaseUser = $this->firebaseAuth->getUser($user->firebase_uid);
             
             $user->update([
-                'last_activity' => now(),
+                'last_activity' => now(), // Esto es vital para el estado "Online"
                 'firebase_data' => array_merge($user->firebase_data ?? [], [
                     'email_verified' => $firebaseUser->emailVerified,
                     'metadata' => [
@@ -155,9 +178,6 @@ class AuthController extends Controller
         }
     }
 
-    /**
-     * Format user response consistently
-     */
     protected function formatUserResponse(User $user)
     {
         return [
@@ -172,9 +192,6 @@ class AuthController extends Controller
         ];
     }
 
-    /**
-     * Example of admin-specific method (protected by the check.admin middleware)
-     */
     public function adminDashboard(Request $request)
     {
         return response()->json([
