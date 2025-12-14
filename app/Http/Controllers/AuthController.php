@@ -137,20 +137,7 @@ class AuthController extends Controller
     /**
      * Get current authenticated user
      */
-    public function me(Request $request)
-    {
-        try {
-            $decoded = $request->attributes->get('firebase_user');
-            $user = User::where('firebase_uid', $decoded->sub)->firstOrFail();
-            
-            return response()->json([
-                'user' => $this->formatUserResponse($user)
-            ]);
-            
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'User not found'], 404);
-        }
-    }
+
 
     public function logout(Request $request)
     {
@@ -192,11 +179,64 @@ class AuthController extends Controller
         ];
     }
 
-    public function adminDashboard(Request $request)
+  /**
+     * Get current authenticated user details for Profile Page
+     */
+    public function me(Request $request)
     {
+        // 1. INTENTO A: Obtener usuario estándar de Laravel
+        $user = $request->user();
+
+        // 2. INTENTO B (FALLBACK): Si falla, buscar manualmente por UID de Firebase
+        if (!$user) {
+            $firebaseUser = $request->attributes->get('firebase_user');
+            if ($firebaseUser) {
+                $user = User::where('firebase_uid', $firebaseUser->sub)->first();
+            }
+        }
+
+        // 3. SEGURIDAD: Si sigue sin haber usuario, devolvemos error (Evita pantalla blanca 500)
+        if (!$user) {
+            return response()->json(['error' => 'Usuario no encontrado o sesión expirada'], 401);
+        }
+
+        // --- LÓGICA DE FECHAS (Extraer de Firebase JSON si es necesario) ---
+        $firebaseDate = null;
+        // Verificamos que firebase_data sea array y tenga la fecha dentro
+        if (is_array($user->firebase_data) && isset($user->firebase_data['metadata']['last_login_at']['date'])) {
+            $firebaseDate = $user->firebase_data['metadata']['last_login_at']['date'];
+        }
+
+        // --- RESPUESTA JSON FINAL PARA EL FRONTEND ---
         return response()->json([
-            'message' => 'Welcome to the admin dashboard!',
-            'user' => $request->get('firebase_user'),
+            // Identidad básica
+            'id'            => $user->id,
+            'name'          => $user->name,
+            'email'         => $user->email,
+            'avatar_url'    => $user->photo_url, 
+
+            // Roles y Permisos
+            'role'          => $user->role,
+            'is_admin'      => $user->role === 'admin',
+            'status'        => $user->is_banned ? 'banned' : 'active',
+            
+            // Estado de Verificación (Email o Firebase)
+            'is_verified'   => !is_null($user->email_verified_at) || ($user->firebase_data['email_verified'] ?? false),
+
+            // Datos Técnicos (Para soporte)
+            'firebase_uid'  => $user->firebase_uid,
+
+            // Fechas
+            'created_at'    => $user->created_at,
+            'updated_at'    => $user->updated_at,
+            
+            // Lógica en Cascada para 'Última Actividad':
+            // 1. last_login (DB) -> 2. last_activity (DB) -> 3. Firebase JSON -> 4. updated_at
+            'last_login_at' => $user->last_login 
+                               ?? $user->last_activity 
+                               ?? $firebaseDate 
+                               ?? $user->updated_at,
         ]);
     }
+   
 }

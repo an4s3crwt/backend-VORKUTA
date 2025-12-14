@@ -48,6 +48,7 @@ class Kernel extends HttpKernel
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\ApiMetrics::class,
             \App\Http\Middleware\LogResponseTime::class, // logs DB
+            \App\Http\Middleware\LogPerformance::class
         ],
 
 

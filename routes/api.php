@@ -47,7 +47,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
 
-
+Route::get('/admin/server-stats', [AdminDashboardController::class, 'serverStats']);
 
 
 
@@ -111,6 +111,8 @@ Route::prefix('v1')->group(function () {
 
         // POST porque estamos cambiando el estado del servidor
         Route::post('/admin/system/{action}', [AdminDashboardController::class, 'runSystemAction']);
+    
+        Route::get('/admin/performance-stats', [AdminDashboardController::class, 'getRealPerformanceStats']);
     });
 
 

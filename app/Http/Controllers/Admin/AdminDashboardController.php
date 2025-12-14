@@ -30,46 +30,7 @@ class AdminDashboardController extends Controller
     /**
      * 2. LOGS DE IA (Simulados)
      */
-    public function getAiLogs()
-    {
-        $flights = ['IBE324', 'VLG102', 'RYR99', 'UAE55', 'Lufthansa 404'];
-        $logs = [];
-
-        foreach ($flights as $index => $flight) {
-            $scenario = rand(1, 4);
-            $data = [];
-
-            switch ($scenario) {
-                case 1: 
-                    $data = ['prediction' => 'on_time', 'minutes' => 0, 'prob' => rand(5, 20) / 100, 'reason' => 'Stable flight at 34000ft. On schedule.'];
-                    break;
-                case 2: 
-                    $prob = rand(70, 95) / 100;
-                    $mins = 15 + ($prob * 30);
-                    $data = ['prediction' => 'delayed', 'minutes' => round($mins, 1), 'prob' => $prob, 'reason' => "High risk detected. Delay: " . round($mins, 1) . " min."];
-                    break;
-                case 3: 
-                    $data = ['prediction' => 'potential_delay', 'minutes' => 0, 'prob' => 0.0, 'reason' => 'Signal lost or data not updating (Frozen Radar).'];
-                    break;
-                case 4: 
-                    $data = ['prediction' => 'on_time', 'minutes' => 2.0, 'prob' => 0.30, 'reason' => 'Final approach at 2000ft. Landing imminent.'];
-                    break;
-            }
-
-            $logs[] = [
-                'id' => rand(1000, 9999),
-                'flight' => $flight,
-                'time' => now()->subMinutes($index * 2)->format('H:i:s'),
-                'prediction' => $data['prediction'],
-                'minutes' => $data['minutes'],
-                'prob' => $data['prob'],
-                'reason' => $data['reason']
-            ];
-        }
-
-        return response()->json($logs);
-    }
-
+  
     /**
      * 3. MONITOR DE SEGURIDAD (Usuarios + Logs)
      */
@@ -261,4 +222,86 @@ class AdminDashboardController extends Controller
             ], 500);
         }
     }
+
+  /**
+     * DATOS REALES DE RENDIMIENTO (Modificado: Recientes + Lentos)
+     */
+    public function getRealPerformanceStats()
+    {
+        // 1. PETICIONES RECIENTES (Live Traffic)
+        // Sacamos las últimas 6 que han entrado al sistema
+        $recent = DB::table('performance_logs')
+            ->select(
+                'path as endpoint', 
+                'method', 
+                'response_time', 
+                'status_code',
+                'created_at'
+            )
+            ->orderBy('created_at', 'desc') // Las más nuevas primero
+            ->limit(6)
+            ->get()
+            ->map(function ($log) {
+                // Formateamos la fecha para que sea legible
+                $log->time_ago = \Carbon\Carbon::parse($log->created_at)->diffForHumans();
+                return $log;
+            });
+
+        // 2. TOP 5 ENDPOINTS LENTOS (Igual que antes)
+        $slowest = DB::table('performance_logs')
+            ->select(
+                'path as endpoint', 
+                'method', 
+                DB::raw('AVG(response_time) as avg_time'), 
+                DB::raw('COUNT(*) as calls')
+            )
+            ->groupBy('path', 'method')
+            ->orderByDesc('avg_time')
+            ->limit(5)
+            ->get();
+
+        return response()->json([
+            'recent' => $recent,   // <--- CAMBIO AQUÍ (Antes era 'chart')
+            'slowest' => $slowest
+        ]);
+    }
+
+    // En tu endpoint /admin/db-stats o uno nuevo
+public function serverStats()
+{
+    // 1. RAM (Memoria) - Solo funciona en Linux
+    $ramUsage = 0;
+    try {
+        // Ejecutamos 'free -m' para obtener megas usados
+        $free = shell_exec('free -m');
+        $free = (string)trim($free);
+        $arr = explode("\n", $free);
+        // Parseamos la segunda línea que tiene los datos
+        $mem = preg_split("/\s+/", $arr[1]); 
+        // $mem[1] es Total, $mem[2] es Usada
+        $ramUsage = ($mem[2] / $mem[1]) * 100;
+    } catch (\Exception $e) {
+        $ramUsage = 0; // Fallback por si estás en Windows
+    }
+
+    // 2. CPU (Carga del sistema)
+    // sys_getloadavg() devuelve la carga de 1, 5 y 15 min.
+    // Usamos la de 1 minuto. Multiplicamos por 100 para porcentaje aprox.
+    $load = sys_getloadavg();
+    $cpuUsage = $load[0] * 100;
+    // Si la carga es mayor a 100% (multinúcleo), lo limitamos visualmente a 100
+    if ($cpuUsage > 100) $cpuUsage = 100;
+
+    // 3. DISCO DURO (Espacio en partición raíz)
+    $diskTotal = disk_total_space('/');
+    $diskFree = disk_free_space('/');
+    $diskUsage = 100 - (($diskFree / $diskTotal) * 100);
+
+    return response()->json([
+        'cpu' => round($cpuUsage, 1),
+        'ram' => round($ramUsage, 1),
+        'disk' => round($diskUsage, 1),
+        'apiQuota' => 65 // Este lo dejamos fijo o lo sacas de tu contador de API
+    ]);
+}
 }
