@@ -5,7 +5,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'], // Permitimos todo el mundo
+    'allowed_origins' => ['https://frontend-vorkuta.vercel.app'], // Permitimos todo el mundo
 
     'allowed_origins_patterns' => [],
 
