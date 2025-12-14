@@ -21,8 +21,8 @@ WORKDIR /var/www/html
 COPY . .
 
 # Instalar dependencias de Laravel
-RUN composer install --no-interaction --optimize-autoloader --no-dev
-
+# Instalar dependencias de Laravel (MODIFICADO)
+RUN composer install --no-interaction --optimize-autoloader --no-dev --no-scripts
 # Permisos para storage y cache
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 RUN chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
