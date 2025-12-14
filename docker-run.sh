@@ -3,8 +3,7 @@
 # 1. Ejecutar migraciones (crear tablas)
 php artisan migrate --force
 
-# 2. Generar claves para el login
-php artisan passport:keys --force
+# (AQUÍ HABÍA UNA LÍNEA DE PASSPORT, LA HAS BORRADO)
 
-# 3. Arrancar el servidor Apache (IMPORTANTE)
+# 3. Arrancar el servidor Apache
 apache2-foreground
