@@ -7,8 +7,9 @@ use App\Models\User;
 use Kreait\Firebase\Auth as FirebaseAuth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\DB; // <--- IMPRESCINDIBLE PARA ESCRIBIR EN LOGS
+use Illuminate\Support\Facades\DB;
 use Kreait\Firebase\Exception\AuthException;
+use Throwable;
 
 class AuthController extends Controller
 {
@@ -18,64 +19,96 @@ class AuthController extends Controller
     {
         $this->firebaseAuth = $firebaseAuth;
         
-        // Aplica autenticación solo a los métodos que la necesitan
-        $this->middleware('firebase.auth')->except(['register']);  
-        $this->middleware('check.user')->only(['login', 'me']); 
-        $this->middleware('check.admin')->only(['adminDashboard']); 
+        // --- CAMBIO CLAVE PARA QUE NO DE NETWORK ERROR ---
+        // Excluimos 'login' del middleware para verificar el token manualmente dentro
+        // Así evitamos que Apache/Render bloqueen la petición antes de entrar.
+        $this->middleware('firebase.auth')->except(['register', 'login']);  
+        
+        $this->middleware('check.user')->only(['me']); 
+        // $this->middleware('check.admin')->only(['adminDashboard']); // Descomenta cuando tengas el dashboard
     }
 
     /**
-     * Handle user login with Firebase authentication
+     * LOGIN PROFESIONAL (Con verificación manual para evitar CORS/Middleware issues)
      */
     public function login(Request $request)
     {
         try {
-            $decoded = $request->attributes->get('firebase_user');
-            $uid = $decoded->sub;
-
-            Log::info('Firebase UID received:', ['uid' => $uid]);
-
-            $user = User::where('firebase_uid', $uid)->first();
-
-            if (!$user) {
-                return response()->json([
-                    'error' => 'User not registered in backend',
-                    'firebase_user' => $decoded
-                ], 404);
+            // 1. OBTENER EL TOKEN (Manual, sin middleware)
+            $token = $request->bearerToken();
+            
+            if (!$token) {
+                return response()->json(['error' => 'Token no proporcionado'], 401);
             }
 
-            // Actualizar datos del usuario desde Firebase
-            $this->syncUserWithFirebase($user, $decoded);
+            // 2. VERIFICAR CON FIREBASE (Aquí usamos la librería real)
+            try {
+                $verifiedIdToken = $this->firebaseAuth->verifyIdToken($token);
+                $uid = $verifiedIdToken->claims()->get('sub');
+                
+                // Obtenemos los datos del token para actualizar
+                $firebaseUser = $this->firebaseAuth->getUser($uid);
+                
+            } catch (Throwable $e) {
+                return response()->json(['error' => 'Token inválido o expirado: ' . $e->getMessage()], 401);
+            }
+
+            Log::info('Firebase UID received and verified:', ['uid' => $uid]);
+
+            // 3. BUSCAR O CREAR USUARIO (Sincronización Automática)
+            // Si el usuario existe en Firebase pero no en SQL (porque borramos la tabla),
+            // lo creamos al vuelo para que no de error 404.
+            $user = User::firstOrCreate(
+                ['firebase_uid' => $uid],
+                [
+                    'email' => $firebaseUser->email,
+                    'name' => $firebaseUser->displayName ?? explode('@', $firebaseUser->email)[0],
+                    'password' => bcrypt($uid), // Password dummy
+                    'firebase_data' => [
+                         'email_verified' => $firebaseUser->emailVerified,
+                         'metadata' => [
+                             'last_login_at' => $firebaseUser->metadata->lastLoginAt,
+                         ]
+                    ]
+                ]
+            );
+
+            // 4. GENERAR TOKEN SANCTUM (Para que Laravel te deje seguir navegando)
+            // Borramos tokens viejos para no acumular basura
+            $user->tokens()->delete();
+            $sanctumToken = $user->createToken('auth_token')->plainTextToken;
 
             // =========================================================
-            // NUEVO: AUDITORÍA DE SEGURIDAD (LLENAR TABLA LOGS)
-            // Esto hace que el Dashboard muestre IP y Estado "Online"
+            // AUDITORÍA (LOGS)
             // =========================================================
             try {
-                DB::table('logs')->insert([
-                    'user_id'    => $user->id,
-                    'action'     => 'login',
-                    'details'    => 'Autenticación exitosa vía Firebase Auth',
-                    'ip_address' => $request->ip(), // Captura la IP real del cliente
-                    'level'      => 'info',
-                    'created_at' => now(),
-                ]);
+                // Verificamos si la tabla logs existe antes de insertar (por si acaso)
+                if (\Illuminate\Support\Facades\Schema::hasTable('logs')) {
+                    DB::table('logs')->insert([
+                        'user_id'    => $user->id,
+                        'action'     => 'login',
+                        'details'    => 'Login exitoso desde Render',
+                        'ip_address' => $request->ip(),
+                        'level'      => 'info',
+                        'created_at' => now(),
+                    ]);
+                }
             } catch (\Exception $logEx) {
-                // Si falla el log, no bloqueamos el login del usuario
-                Log::error("Error escribiendo log de auditoría: " . $logEx->getMessage());
+                Log::error("Error log auditoría: " . $logEx->getMessage());
             }
             // =========================================================
 
             return response()->json([
                 'message' => 'Login successful',
                 'user' => $this->formatUserResponse($user),
+                'access_token' => $sanctumToken, // IMPORTANTE para el Frontend
+                'token_type' => 'Bearer',
                 'is_admin' => $user->isAdmin(),
-                'token_valid_until' => $decoded->exp,
             ]);
             
         } catch (\Exception $e) {
-            Log::error('Login error: '.$e->getMessage());
-            return response()->json(['error' => 'Authentication failed'], 401);
+            Log::error('Login Critical Error: '.$e->getMessage());
+            return response()->json(['error' => 'Authentication failed', 'details' => $e->getMessage()], 500);
         }
     }
 
@@ -85,8 +118,8 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'firebase_uid' => 'required|string|unique:users,firebase_uid',
-            'email' => 'required|string|email|unique:users',
+            'firebase_uid' => 'required|string', // Quitamos unique estricto por si acaso
+            'email' => 'required|string|email',
             'name' => 'required|string',
         ]);
 
@@ -95,76 +128,50 @@ class AuthController extends Controller
         }
 
         try {
+            // Verificar que el usuario existe en Firebase real
             $firebaseUser = $this->firebaseAuth->getUser($request->firebase_uid);
             
-            $user = User::create([
-                'firebase_uid' => $request->firebase_uid,
-                'email' => $request->email,
-                'name' => $request->name,
-                'password' => bcrypt(uniqid()), 
-                'firebase_data' => [
-                    'email_verified' => $firebaseUser->emailVerified,
-                    'metadata' => [
-                        'created_at' => $firebaseUser->metadata->createdAt,
-                        'last_login_at' => $firebaseUser->metadata->lastLoginAt,
+            // Usamos firstOrCreate para evitar duplicados si le das dos veces al botón
+            $user = User::firstOrCreate(
+                ['firebase_uid' => $request->firebase_uid],
+                [
+                    'email' => $request->email,
+                    'name' => $request->name,
+                    'password' => bcrypt(uniqid()), 
+                    'firebase_data' => [
+                        'email_verified' => $firebaseUser->emailVerified,
+                        'metadata' => [
+                            'created_at' => $firebaseUser->metadata->createdAt,
+                            'last_login_at' => $firebaseUser->metadata->lastLoginAt,
+                        ],
                     ],
-                ],
-            ]);
+                ]
+            );
 
-            // OPCIONAL: También guardamos log al registrarse
-            DB::table('logs')->insert([
-                'user_id'    => $user->id,
-                'action'     => 'register',
-                'details'    => 'Nuevo usuario registrado en el sistema',
-                'ip_address' => $request->ip(),
-                'level'      => 'info',
-                'created_at' => now(),
-            ]);
+            // Generar token
+            $sanctumToken = $user->createToken('auth_token')->plainTextToken;
 
             return response()->json([
                 'message' => 'User registered successfully',
                 'user' => $this->formatUserResponse($user),
+                'access_token' => $sanctumToken,
             ]);
 
-        } catch (AuthException $e) {
-            return response()->json(['error' => 'Invalid Firebase user'], 400);
         } catch (\Exception $e) {
             Log::error('Registration error: '.$e->getMessage());
-            return response()->json(['error' => 'Registration failed'], 500);
+            return response()->json(['error' => 'Registration failed', 'details' => $e->getMessage()], 500);
         }
     }
-
-    /**
-     * Get current authenticated user
-     */
-
 
     public function logout(Request $request)
     {
+        if ($request->user()) {
+            $request->user()->tokens()->delete();
+        }
         return response()->json(['message' => 'Logout successful']);
     }
 
-    protected function syncUserWithFirebase(User $user, $decodedToken)
-    {
-        try {
-            $firebaseUser = $this->firebaseAuth->getUser($user->firebase_uid);
-            
-            $user->update([
-                'last_activity' => now(), // Esto es vital para el estado "Online"
-                'firebase_data' => array_merge($user->firebase_data ?? [], [
-                    'email_verified' => $firebaseUser->emailVerified,
-                    'metadata' => [
-                        'last_login_at' => $firebaseUser->metadata->lastLoginAt,
-                    ],
-                    'custom_claims' => $firebaseUser->customClaims ?? [],
-                ]),
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Firebase sync error: '.$e->getMessage());
-        }
-    }
-
+    // Helper para formatear
     protected function formatUserResponse(User $user)
     {
         return [
@@ -173,70 +180,29 @@ class AuthController extends Controller
             'email' => $user->email,
             'role' => $user->role,
             'is_admin' => $user->isAdmin(),
-            'email_verified' => $user->firebase_data['email_verified'] ?? false,
-            'last_activity' => $user->last_activity,
             'photo_url' => $user->photo_url,
         ];
     }
 
-  /**
+    /**
      * Get current authenticated user details for Profile Page
      */
     public function me(Request $request)
     {
-        // 1. INTENTO A: Obtener usuario estándar de Laravel
         $user = $request->user();
-
-        // 2. INTENTO B (FALLBACK): Si falla, buscar manualmente por UID de Firebase
+        
         if (!$user) {
-            $firebaseUser = $request->attributes->get('firebase_user');
-            if ($firebaseUser) {
-                $user = User::where('firebase_uid', $firebaseUser->sub)->first();
-            }
+             return response()->json(['error' => 'No autorizado'], 401);
         }
 
-        // 3. SEGURIDAD: Si sigue sin haber usuario, devolvemos error (Evita pantalla blanca 500)
-        if (!$user) {
-            return response()->json(['error' => 'Usuario no encontrado o sesión expirada'], 401);
-        }
-
-        // --- LÓGICA DE FECHAS (Extraer de Firebase JSON si es necesario) ---
-        $firebaseDate = null;
-        // Verificamos que firebase_data sea array y tenga la fecha dentro
-        if (is_array($user->firebase_data) && isset($user->firebase_data['metadata']['last_login_at']['date'])) {
-            $firebaseDate = $user->firebase_data['metadata']['last_login_at']['date'];
-        }
-
-        // --- RESPUESTA JSON FINAL PARA EL FRONTEND ---
         return response()->json([
-            // Identidad básica
             'id'            => $user->id,
             'name'          => $user->name,
             'email'         => $user->email,
             'avatar_url'    => $user->photo_url, 
-
-            // Roles y Permisos
             'role'          => $user->role,
             'is_admin'      => $user->role === 'admin',
-            'status'        => $user->is_banned ? 'banned' : 'active',
-            
-            // Estado de Verificación (Email o Firebase)
-            'is_verified'   => !is_null($user->email_verified_at) || ($user->firebase_data['email_verified'] ?? false),
-
-            // Datos Técnicos (Para soporte)
-            'firebase_uid'  => $user->firebase_uid,
-
-            // Fechas
             'created_at'    => $user->created_at,
-            'updated_at'    => $user->updated_at,
-            
-            // Lógica en Cascada para 'Última Actividad':
-            // 1. last_login (DB) -> 2. last_activity (DB) -> 3. Firebase JSON -> 4. updated_at
-            'last_login_at' => $user->last_login 
-                               ?? $user->last_activity 
-                               ?? $firebaseDate 
-                               ?? $user->updated_at,
         ]);
     }
-   
 }
