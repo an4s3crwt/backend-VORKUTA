@@ -1,36 +1,55 @@
 <?php
 
 return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Defaults
+    |--------------------------------------------------------------------------
+    */
+
     'defaults' => [
-        'guard' => 'firebase',  // Usa el guard personalizado de Firebase
+        'guard' => 'web',     // Volvemos al estándar
         'passwords' => 'users',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Guards
+    |--------------------------------------------------------------------------
+    */
 
     'guards' => [
         'web' => [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
         'api' => [
-            'driver' => 'firebase',  // Cambiado para usar el guard personalizado de Firebase
+            'driver' => 'sanctum', // <--- ESTO ES LO QUE NECESITAS PARA QUE NO EXPLOTE
             'provider' => 'users',
-        ],
-        'firebase' => [
-            'driver' => 'firebase',  // Este será tu guard personalizado de Firebase
-            'provider' => 'firebase_users',
+            'hash' => false,
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | User Providers
+    |--------------------------------------------------------------------------
+    */
+
     'providers' => [
         'users' => [
-            'driver' => 'eloquent', 
+            'driver' => 'eloquent',
             'model' => App\Models\User::class,
         ],
-        'firebase_users' => [
-            'driver' => 'eloquent',
-            'model'  => App\Models\User::class,
-        ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Resetting Passwords
+    |--------------------------------------------------------------------------
+    */
 
     'passwords' => [
         'users' => [
@@ -41,5 +60,12 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Password Confirmation Timeout
+    |--------------------------------------------------------------------------
+    */
+
     'password_timeout' => 10800,
+
 ];
