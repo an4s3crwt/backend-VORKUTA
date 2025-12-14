@@ -1,10 +1,12 @@
 #!/bin/sh
 
-# 1. Intentamos migrar. El "|| true" significa: "Si fallas, NO PARES, sigue igual".
+# 1. Migraciones (con el truco de ignorar errores)
 php artisan migrate --force || true
 
-# 2. BORRA la linea de passport si aun esta ahi.
-# (La hemos quitado para que no falle)
+# 2. ¡LIMPIEZA OBLIGATORIA! (Esto hace lo que harías en el Shell)
+php artisan cache:clear
+php artisan route:clear
+php artisan config:clear
 
 # 3. Arrancar el servidor
 apache2-foreground

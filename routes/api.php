@@ -1,4 +1,5 @@
 <?php
+
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FlightDataController;
@@ -12,66 +13,68 @@ use App\Http\Controllers\AirlineController;
 use App\Http\Controllers\AirportStatsController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\FlightController;
+use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\SystemMetricsController;
 use App\Jobs\FailOnPurpose;
 
+/*
+|--------------------------------------------------------------------------
+| API Routes - VORKUTA
+|--------------------------------------------------------------------------
+*/
 
+// Todo agrupado bajo "/api/v1"
 Route::prefix('v1')->group(function () {
+
+    // =========================================================================
+    // 1. RUTAS PÚBLICAS (¡SIN MIDDLEWARE!)
+    // IMPORTANTE: El login y register TIENEN que estar aquí fuera para entrar.
+    // =========================================================================
+    
     Route::get('/server-time', function () {
-        return response()->json([
-            'server_time' => now()->toISOString()
-        ]);
-
-
+        return response()->json(['server_time' => now()->toISOString()]);
     });
-    // Proteger  el login con firebase.auth (pero sin el middleware de rol aún)
-    Route::middleware(['firebase.auth'])->post('/login', [AuthController::class, 'login']);
 
+    // ¡HECHO! Login ahora es público. El backend ya no rechazará la entrada.
+    Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);
 
-    Route::post('/assign-admin/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'assignAdminClaim']);
-    Route::get('/verify-admin/{uid}', [\App\Http\Controllers\Admin\AdminUserController::class, 'verifyAdminClaim']);
-    Route::post('create-first-admin', [\App\Http\Controllers\Admin\AdminUserController::class, 'createFirstAdmin']);
+    // Configuración inicial de Admins (Mantengo esto público como lo tenías)
+    Route::post('/assign-admin/{uid}', [AdminUserController::class, 'assignAdminClaim']);
+    Route::get('/verify-admin/{uid}', [AdminUserController::class, 'verifyAdminClaim']);
+    Route::post('/create-first-admin', [AdminUserController::class, 'createFirstAdmin']);
 
-    // Rutas protegidas con middleware Firebase
+
+    // =========================================================================
+    // 2. RUTAS PROTEGIDAS (USUARIO NORMAL)
+    // Solo se puede entrar aquí si envías el Token válido
+    // =========================================================================
+    // NOTA: Si cambiaste a Sanctum puro, usa 'auth:sanctum'. Si usas Firebase, deja 'firebase.auth'.
+    // Dejo 'firebase.auth' porque así lo tenías tú.
     Route::middleware(['firebase.auth', 'check.user'])->group(function () {
-        Route::post('/predict-delay', [DelayController::class, 'predict']);
-        Route::get('/flight-live/{icao}', [FlightController::class, 'getFlightData']);
-        //  NUEVA RUTA: Para el Dashboard (Lista completa)
-        Route::get('/flights/live', [FlightController::class, 'getAllFlights']);
-        Route::get('/flights/area', [FlightController::class, 'getFlightsByArea']);
-
-        Route::get('/flights/nearby', [FlightController::class, 'getNearbyFlights']);
-        // NUEVA RUTA: Estadísticas para el Dashboard del Aeropuerto
-
-        // Información del usuario
+        
+        // Auth Check
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
 
-Route::get('/admin/server-stats', [AdminDashboardController::class, 'serverStats']);
-
-
-
-
+        // Vuelos y Predicciones
+        Route::post('/predict-delay', [DelayController::class, 'predict']);
+        Route::get('/flight-live/{icao}', [FlightController::class, 'getFlightData']);
+        Route::get('/flights/live', [FlightController::class, 'getAllFlights']);
+        Route::get('/flights/area', [FlightController::class, 'getFlightsByArea']);
+        Route::get('/flights/nearby', [FlightController::class, 'getNearbyFlights']);
 
         // OpenSky
         Route::get('/opensky/states', [OpenSkyController::class, 'getStatesAll']);
-
-
-
-        //
         Route::get('/flights/airport/{icao_code}', [OpenSkyController::class, 'getLiveFlightsToAirport']);
 
-        //Airports and Airlines
+        // Aeropuertos y Aerolíneas
         Route::get('/airports', [AirportController::class, 'index']);
         Route::get('/airports/{icao_code}', [OpenSkyController::class, 'getAirportInfo']);
+        Route::get('/airport-info/{icao_code}', [AirportController::class, 'show']);
         Route::get('/airlines', [AirlineController::class, 'index']);
 
-
-
-        //
-        Route::get('/airport-info/{icao_code}', [AirportController::class, 'show']);
-
-        //FlightView
+        // Flight Views (Historial)
         Route::post('/flight/view', [FlightViewController::class, 'storeFlightView']);
 
         // Preferencias
@@ -81,40 +84,35 @@ Route::get('/admin/server-stats', [AdminDashboardController::class, 'serverStats
 
 
     // =========================================================================
-    // --- ZONA ADMIN (LA TORRE DE CONTROL) ---
-    // Aquí conectamos el Dashboard de React con tus tablas SQL
+    // 3. ZONA ADMIN (LA TORRE DE CONTROL)
     // =========================================================================
     Route::middleware(['firebase.auth', 'check.admin'])->group(function () {
 
-
-
+        // Debugging
         Route::get('/debug/trigger-error', function () {
             FailOnPurpose::dispatch();
-            return "Trabajo fallido enviado a la cola. Ahora ejecuta 'php artisan queue:work'";
+            return "Trabajo fallido enviado a la cola.";
         });
 
-        // 1. ESTADÍSTICAS DE INFRAESTRUCTURA (Para las tarjetas de colores)
-        // Conecta con 'flight_positions', 'failed_jobs', 'telescope_entries'
+        // Dashboard Stats
+        Route::get('/admin/server-stats', [AdminDashboardController::class, 'serverStats']);
         Route::get('/admin/db-stats', [AdminDashboardController::class, 'getSystemStats']);
+        Route::get('/admin/performance-stats', [AdminDashboardController::class, 'getRealPerformanceStats']);
 
-        // 2. GESTIÓN DE USUARIOS (Para la tabla del Dashboard)
+        // Gestión de Usuarios
         Route::get('/admin/users', [AdminDashboardController::class, 'indexUsers']);
-        Route::delete('/admin/users/{id}', [AdminDashboardController::class, 'deleteUser']); // Borrar
-        Route::patch('/admin/users/{id}/role', [AdminDashboardController::class, 'toggleRole']); // Cambiar Rol
-
+        Route::delete('/admin/users/{id}', [AdminDashboardController::class, 'deleteUser']);
+        Route::patch('/admin/users/{id}/role', [AdminDashboardController::class, 'toggleRole']);
+        
+        // Logs y Actividad
         Route::get('/admin/ai-logs', [AdminDashboardController::class, 'getAiLogs']);
         Route::get('/admin/recent-users', [AdminDashboardController::class, 'getRecentUsers']);
         Route::get('/admin/opensky-ping', [AdminDashboardController::class, 'checkOpenSkyStatus']);
-        // 3. TUS RUTAS EXISTENTES DE MÉTRICAS (Las mantenemos)
-        Route::get('/admin/system/cpu-usage', [\App\Http\Controllers\Admin\SystemMetricsController::class, 'cpuUsage']);
-        Route::get('/admin/system/memory-usage', [\App\Http\Controllers\Admin\SystemMetricsController::class, 'memoryUsage']);
 
-        // POST porque estamos cambiando el estado del servidor
+        // Métricas del Sistema (Hardware)
+        Route::get('/admin/system/cpu-usage', [SystemMetricsController::class, 'cpuUsage']);
+        Route::get('/admin/system/memory-usage', [SystemMetricsController::class, 'memoryUsage']);
         Route::post('/admin/system/{action}', [AdminDashboardController::class, 'runSystemAction']);
-    
-        Route::get('/admin/performance-stats', [AdminDashboardController::class, 'getRealPerformanceStats']);
     });
-
-
 
 });
