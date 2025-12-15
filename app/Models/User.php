@@ -7,18 +7,20 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 use Kreait\Firebase\Auth as FirebaseAuth;
+use Laravel\Sanctum\HasApiTokens; // <-- LÍNEA AÑADIDA (1/2)
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable, HasRoles;
+    // Asegúrate de que HasApiTokens sea la primera trait o esté incluida aquí.
+    use HasApiTokens, HasFactory, Notifiable, HasRoles; // <-- LÍNEA MODIFICADA (2/2)
 
     protected $fillable = [
         'name',
         'email',
         'password',
         'firebase_uid',
-        'firebase_data', // For storing additional Firebase user data
-        'photo_url',      // If you want to store Firebase profile photo
+        'firebase_data',
+        'photo_url',
         'role',
     ];
 
