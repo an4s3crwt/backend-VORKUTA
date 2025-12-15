@@ -20,6 +20,9 @@ WORKDIR /var/www/html
 # Copiar archivos del proyecto
 COPY . .
 
+# *** LÍNEA A AÑADIR ***
+RUN chmod +x render_start.sh
+
 # Instalar dependencias de Laravel
 # Instalar dependencias de Laravel (MODIFICADO)
 RUN composer install --no-interaction --optimize-autoloader --no-dev --no-scripts
