@@ -5,15 +5,19 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://frontend-vorkuta.vercel.app'], // Permitimos todo el mundo
-
+    'allowed_origins' => ['https://frontend-vorkuta.vercel.app'], 
     'allowed_origins_patterns' => [],
 
-    'allowed_headers' => ['*'],
+    'allowed_headers' => [
+        'Content-Type',
+        'Accept',
+        'X-Requested-With',
+        'Authorization',
+    ],
 
     'exposed_headers' => [],
 
     'max_age' => 0,
 
-    'supports_credentials' => false, // si uso '*', esto debe ser false.
+    'supports_credentials' => false, 
 ];
