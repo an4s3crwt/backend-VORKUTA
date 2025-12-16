@@ -35,7 +35,7 @@ Route::prefix('v1')->group(function () {
         return response()->json(['server_time' => now()->toISOString()]);
     });
 
-    // ¡HECHO! Login ahora es público. El backend ya no rechazará la entrada.
+    // ¡HECHO! Login y Register son públicos.
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);
 
@@ -49,8 +49,7 @@ Route::prefix('v1')->group(function () {
     // 2. RUTAS PROTEGIDAS (USUARIO NORMAL)
     // Solo se puede entrar aquí si envías el Token válido
     // =========================================================================
-    // NOTA: Si cambiaste a Sanctum puro, usa 'auth:sanctum'. Si usas Firebase, deja 'firebase.auth'.
-    // Dejo 'firebase.auth' porque así lo tenías tú.
+    // NOTA: 'firebase.auth' requiere que las credenciales del servidor Firebase sean correctas.
     Route::middleware(['firebase.auth', 'check.user'])->group(function () {
         
         // Auth Check

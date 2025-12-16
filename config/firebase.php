@@ -10,7 +10,7 @@ return [
      */
 
     'default' => env('FIREBASE_PROJECT', 'app'),
- 
+
 
     /*
      * ------------------------------------------------------------------------
@@ -50,7 +50,8 @@ return [
              * first time you try to access a component of the Firebase Admin SDK.
              *
              */
-            'credentials' => env('FIREBASE_CREDENTIALS', storage_path('app/credentials.json')),
+            // config/firebase.php (Línea 63)
+            'credentials' => env('FIREBASE_CREDENTIALS', null), // Cambiar a 'null'
             'project_id' => env('FIREBASE_PROJECT_ID'),
             /*
              * ------------------------------------------------------------------------
