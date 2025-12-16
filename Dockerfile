@@ -27,10 +27,12 @@ COPY . .
 # 3. Instalar dependencias base y resolver Sanctum
 RUN composer install --no-interaction --optimize-autoloader --no-dev
 
-# 🛠️ PASO CRÍTICO FINAL: DESINSTALAR TELESCOPE (Solo para entorno de producción)
-# Esto elimina el error 500 que ocurre durante la terminación del Kernel.
+# 🛠️ PASO CRÍTICO: DESINSTALAR TELESCOPE 
 RUN composer remove laravel/telescope --no-update
-RUN composer dump-autoload --optimize 
+
+# CRÍTICO: Regenerar el autoloader sin ejecutar NINGÚN script.
+# Esto evita que 'php artisan package:discover' falle durante el build.
+RUN composer dump-autoload --optimize --no-scripts 
 
 
 # --- CONFIGURACIÓN DE LARAVEL Y APACHE ---
