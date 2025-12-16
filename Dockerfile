@@ -18,7 +18,14 @@ WORKDIR /var/www/html
 
 # --- COPIA EXPLÍCITA Y INSTALACIÓN DE DEPENDENCIAS ---
 COPY composer.json composer.lock ./
-RUN composer install --no-interaction --optimize-autoloader --no-dev --no-scripts
+# Dockerfile (Línea 29, aproximadamente)
+
+# 2. Instalar dependencias de Laravel
+# Quitamos flags restrictivos y regeneramos autoloader.
+RUN composer install --no-interaction --optimize-autoloader --no-dev
+
+# 3. Regenerar el autoloader de clases por si acaso (aunque optimize-autoloader ya lo hace)
+RUN composer dump-autoload --optimize
 COPY . .
 
 # --- CONFIGURACIÓN DE LARAVEL Y APACHE ---
