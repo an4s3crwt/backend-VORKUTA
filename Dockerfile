@@ -21,13 +21,16 @@ WORKDIR /var/www/html
 # 1. Copiar archivos de definición de dependencias
 COPY composer.json composer.lock ./
 
-# 2. Copiar el resto del proyecto, incluyendo 'artisan' (¡CRÍTICO!)
-# Esto debe hacerse ANTES de 'composer install' para que los scripts de Composer funcionen.
+# 2. Copiar el resto del proyecto, incluyendo 'artisan'
 COPY . . 
 
-# 3. Instalar dependencias de Laravel (Ahora puede encontrar 'artisan')
-# Sin el flag --no-scripts, permitirá que se instalen paquetes como Sanctum y que se ejecuten los scripts.
+# 3. Instalar dependencias base y resolver Sanctum
 RUN composer install --no-interaction --optimize-autoloader --no-dev
+
+# 🛠️ PASO CRÍTICO FINAL: DESINSTALAR TELESCOPE (Solo para entorno de producción)
+# Esto elimina el error 500 que ocurre durante la terminación del Kernel.
+RUN composer remove laravel/telescope --no-update
+RUN composer dump-autoload --optimize 
 
 
 # --- CONFIGURACIÓN DE LARAVEL Y APACHE ---
@@ -39,13 +42,11 @@ RUN chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 # Habilitar mod_rewrite de Apache para Laravel
 RUN a2enmod rewrite
 
-# 🛠️ AJUSTE CRÍTICO DE PUERTOS: Forzar Apache a escuchar en 8080
-# 1. Cambiar Listen 80 a Listen 8080 en ports.conf
+# 🛠️ AJUSTE DE PUERTOS: Forzar Apache a escuchar en 8080
 RUN sed -i 's/Listen 80/Listen 8080/g' /etc/apache2/ports.conf
-# 2. Cambiar <VirtualHost *:80> a <VirtualHost *:8080> en la configuración por defecto
 RUN sed -i 's/<VirtualHost \*:80>/<VirtualHost \*:8080>/g' /etc/apache2/sites-available/000-default.conf
 
-# Copiar configuración de VirtualHost (Asegura que apunta a /var/www/html/public)
+# Copiar configuración de VirtualHost 
 COPY vhost.conf /etc/apache2/sites-available/000-default.conf
 
 # Exponer el puerto de escucha
