@@ -30,8 +30,17 @@ RUN chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 # Habilitar mod_rewrite de Apache para Laravel
 RUN a2enmod rewrite
 
-# Copiar configuración de VirtualHost (CRÍTICO: apunte a public/)
+# 🛠️ AJUSTE CRÍTICO DE PUERTOS: Forzar Apache a escuchar en 8080
+# 1. Cambiar Listen 80 a Listen 8080 en ports.conf
+RUN sed -i 's/Listen 80/Listen 8080/g' /etc/apache2/ports.conf
+# 2. Cambiar <VirtualHost *:80> a <VirtualHost *:8080> en la configuración por defecto
+RUN sed -i 's/<VirtualHost \*:80>/<VirtualHost \*:8080>/g' /etc/apache2/sites-available/000-default.conf
+
+# Copiar configuración de VirtualHost (Asegura que apunta a /var/www/html/public)
 COPY vhost.conf /etc/apache2/sites-available/000-default.conf
+
+# Exponer el puerto de escucha (Render usará el PORT env var para mapear)
+EXPOSE 8080 
 
 # 1. Copiar y dar permisos al script de arranque
 COPY render_start.sh /usr/local/bin/render_start.sh

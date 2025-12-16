@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 1. Ejecutar las migraciones (Solución del error 500 inicial)
+# 1. Ejecutar las migraciones
 echo "--> Iniciando: php artisan migrate:fresh --force"
 php artisan migrate:fresh --force
 
@@ -10,6 +10,6 @@ php artisan cache:clear
 php artisan route:clear
 php artisan config:clear
 
-# 3. Arrancar el servidor Apache en FOREGROUND (CRÍTICO para Render/Docker)
-echo "--> Iniciando el servidor Apache en foreground."
+# 3. Arrancar el servidor Apache en FOREGROUND (Usa el puerto 8080 configurado)
+echo "--> Iniciando el servidor Apache en foreground (Puerto 8080)."
 exec apache2-foreground

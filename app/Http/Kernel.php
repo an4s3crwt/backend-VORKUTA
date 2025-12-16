@@ -7,11 +7,8 @@ use Illuminate\Foundation\Http\Kernel as HttpKernel;
 class Kernel extends HttpKernel
 {
 
-    
     /**
      * The application's global HTTP middleware stack.
-     *
-     * These middleware are run during every request to your application.
      *
      * @var array<int, class-string|string>
      */
@@ -23,9 +20,10 @@ class Kernel extends HttpKernel
         //\Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
         \App\Http\Middleware\TrimStrings::class,
         \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
-        \App\Http\Middleware\LogResponseTime::class,
-        \App\Http\Middleware\ApiMetrics::class,
-    
+        
+        // ¡ELIMINADOS DEL STACK GLOBAL PARA EVITAR BLOQUEOS EN LOGIN!
+        // \App\Http\Middleware\LogResponseTime::class,
+        // \App\Http\Middleware\ApiMetrics::class,
     ];
 
     /**
@@ -43,12 +41,14 @@ class Kernel extends HttpKernel
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
         'api' => [
-          
+            
             'throttle:api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
-            \App\Http\Middleware\ApiMetrics::class,
-            \App\Http\Middleware\LogResponseTime::class, // logs DB
-            \App\Http\Middleware\LogPerformance::class
+            
+            // ¡ELIMINADOS DEL GRUPO API PARA EVITAR BLOQUEOS EN LOGIN!
+            // \App\Http\Middleware\ApiMetrics::class,
+            // \App\Http\Middleware\LogResponseTime::class, 
+            // \App\Http\Middleware\LogPerformance::class
         ],
 
 
@@ -56,8 +56,6 @@ class Kernel extends HttpKernel
 
     /**
      * The application's middleware aliases.
-     *
-     * Aliases may be used instead of class names to conveniently assign middleware to routes and groups.
      *
      * @var array<string, class-string|string>
      */
@@ -79,6 +77,6 @@ class Kernel extends HttpKernel
         'firebase.auth' => \App\Http\Middleware\FirebaseAuthMiddleware::class,
         'api.metrics' => \App\Http\Middleware\ApiMetrics::class,
 
-       
+        
     ];
 }

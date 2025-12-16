@@ -28,18 +28,17 @@ Route::prefix('v1')->group(function () {
 
     // =========================================================================
     // 1. RUTAS PÚBLICAS (¡SIN MIDDLEWARE!)
-    // IMPORTANTE: El login y register TIENEN que estar aquí fuera para entrar.
+    // Login, Register, Server-Time
     // =========================================================================
     
     Route::get('/server-time', function () {
         return response()->json(['server_time' => now()->toISOString()]);
     });
 
-    // ¡HECHO! Login y Register son públicos.
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);
 
-    // Configuración inicial de Admins (Mantengo esto público como lo tenías)
+    // Configuración inicial de Admins
     Route::post('/assign-admin/{uid}', [AdminUserController::class, 'assignAdminClaim']);
     Route::get('/verify-admin/{uid}', [AdminUserController::class, 'verifyAdminClaim']);
     Route::post('/create-first-admin', [AdminUserController::class, 'createFirstAdmin']);
@@ -47,10 +46,16 @@ Route::prefix('v1')->group(function () {
 
     // =========================================================================
     // 2. RUTAS PROTEGIDAS (USUARIO NORMAL)
-    // Solo se puede entrar aquí si envías el Token válido
+    // AHORA INCLUYEN LOS MIDDLEWARES DE LOGGING
     // =========================================================================
-    // NOTA: 'firebase.auth' requiere que las credenciales del servidor Firebase sean correctas.
-    Route::middleware(['firebase.auth', 'check.user'])->group(function () {
+    Route::middleware([
+        'firebase.auth', 
+        'check.user',
+        // AÑADIDOS AQUÍ: Estos middlewares ahora solo corren DESPUÉS del login exitoso
+        \App\Http\Middleware\LogPerformance::class, 
+        \App\Http\Middleware\ApiMetrics::class,
+        \App\Http\Middleware\LogResponseTime::class,
+    ])->group(function () {
         
         // Auth Check
         Route::get('/auth/me', [AuthController::class, 'me']);
@@ -85,7 +90,11 @@ Route::prefix('v1')->group(function () {
     // =========================================================================
     // 3. ZONA ADMIN (LA TORRE DE CONTROL)
     // =========================================================================
-    Route::middleware(['firebase.auth', 'check.admin'])->group(function () {
+    Route::middleware([
+        'firebase.auth', 
+        'check.admin',
+        // Opcional: Si quieres logging también aquí, añádelo
+    ])->group(function () {
 
         // Debugging
         Route::get('/debug/trigger-error', function () {
