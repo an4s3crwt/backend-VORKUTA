@@ -15,8 +15,7 @@ return [
     | and convenient way to enable or disable Telescope data storage.
     |
     */
-
-    'enabled' => env('TELESCOPE_ENABLED', true),
+'enabled' => false,
 
     /*
     |--------------------------------------------------------------------------

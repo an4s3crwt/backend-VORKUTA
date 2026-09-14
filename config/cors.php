@@ -1,8 +1,16 @@
 <?php
+
 return [
-    'paths' => ['api/*'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie'],
     'allowed_methods' => ['*'],
-    'allowed_origins' => ['https://frontend-vorkuta.vercel.app'],
+    'allowed_origins' => [
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'https://frontend-vorkuta.vercel.app',
+    ],
+    'allowed_origins_patterns' => [],
     'allowed_headers' => ['*'],
-    'supports_credentials' => false,
+    'exposed_headers' => [],
+    'max_age' => 0,
+    'supports_credentials' => true,
 ];

@@ -14,22 +14,19 @@ class FirebaseAuthServiceProvider extends ServiceProvider
     public function register()
     {
         $this->app->bind(Auth::class, function ($app) {
-            $config = config('firebase.projects.' . config('firebase.default'));
-            
-            if (!isset($config['credentials'])) {
-                throw new \Exception('Firebase credentials not defined.');
+            $credentialsPath = storage_path('credentials.json');
+
+            if (!file_exists($credentialsPath)) {
+                throw new \Exception("Firebase credentials file not found at: {$credentialsPath}");
             }
 
-            // Configuración de la autenticación de Firebase
             $this->firebaseAuth = (new Factory)
-                ->withServiceAccount($config['credentials'])
+                ->withServiceAccount($credentialsPath)
                 ->createAuth();
 
             return $this->firebaseAuth;
         });
     }
-
-    
 
     public function boot()
     {
