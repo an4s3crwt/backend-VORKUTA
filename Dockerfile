@@ -33,7 +33,7 @@ RUN docker-php-ext-install \
     mbstring \
     pcntl
 
-RUN pecl install redis && docker-php-ext-enable redis
+
 
 # =========================================================
 # 3️⃣ COMPOSER
