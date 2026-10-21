@@ -5,6 +5,7 @@
 /public/storage
 /storage/*.key
 /vendor
+/storage/credentials.json
 .env
 .env.backup
 .env.production
@@ -17,4 +18,4 @@ yarn-error.log
 /.fleet
 /.idea
 /.vscode
-etc/secrets/credentials.json
+
