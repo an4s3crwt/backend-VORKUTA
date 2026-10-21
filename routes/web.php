@@ -1,9 +1,17 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use Laravel\Telescope\Telescope;
 
+use Illuminate\Support\Facades\Route;
 
+Route::get('/', function () {
+    return response()->json([
+        'status' => 'online',
+        'app' => 'Flighty API',
+        'database' => 'PostgreSQL (Neon)',
+        'timestamp' => now()->toIso8601String()
+    ]);
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -21,6 +29,8 @@ use Laravel\Telescope\Telescope;
 Route::get('/sanctum/csrf-cookie', function () {
     return response()->json(['message' => 'CSRF cookie set']);
 });
+
+
 
 
 
