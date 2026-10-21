@@ -4,7 +4,7 @@
 FROM php:8.2-apache
 
 # =========================================================
-# 1️⃣ DEPENDENCIAS DEL SISTEMA
+# 1️⃣ DEPENDENCIAS DEL SISTEMA (Incluye librerías para Firebase y BD)
 # =========================================================
 RUN apt-get update && apt-get install -y \
     git \
@@ -12,14 +12,27 @@ RUN apt-get update && apt-get install -y \
     curl \
     libpq-dev \
     libzip-dev \
-    zip \
+    libpng-dev \
     libonig-dev \
+    libgmp-dev \
+    libicu-dev \
+    zip \
     && rm -rf /var/lib/apt/lists/*
 
 # =========================================================
-# 2️⃣ EXTENSIONES PHP NECESARIAS
+# 2️⃣ EXTENSIONES PHP NECESARIAS (MySQL + PostgreSQL + Firebase)
 # =========================================================
-RUN docker-php-ext-install pdo pdo_pgsql bcmath zip
+RUN docker-php-ext-install \
+    pdo \
+    pdo_mysql \
+    pdo_pgsql \
+    bcmath \
+    gmp \
+    intl \
+    zip \
+    mbstring \
+    pcntl
+
 RUN pecl install redis && docker-php-ext-enable redis
 
 # =========================================================
@@ -36,7 +49,7 @@ WORKDIR /var/www/html
 # 5️⃣ CACHE DE DEPENDENCIAS COMPOSER
 # =========================================================
 COPY composer.json composer.lock ./
-RUN composer install --no-interaction --optimize-autoloader --no-dev
+RUN composer install --no-interaction --optimize-autoloader --no-dev --no-scripts
 
 # =========================================================
 # 6️⃣ COPIAR PROYECTO
@@ -50,11 +63,13 @@ RUN chown -R www-data:www-data storage bootstrap/cache
 RUN chmod -R 775 storage bootstrap/cache
 
 # =========================================================
-# 8️⃣ APACHE
+# 8️⃣ APACHE (Configurado en puerto 8080 para Render/Cloud)
 # =========================================================
 RUN a2enmod rewrite
 RUN sed -i 's/Listen 80/Listen 8080/g' /etc/apache2/ports.conf
 RUN sed -i 's/<VirtualHost \*:80>/<VirtualHost \*:8080>/g' /etc/apache2/sites-available/000-default.conf
+
+# Si tienes vhost.conf personalizado se copia, si no, se usa la ruta pública estándar
 COPY vhost.conf /etc/apache2/sites-available/000-default.conf
 EXPOSE 8080
 
@@ -64,8 +79,3 @@ EXPOSE 8080
 COPY render_start.sh /usr/local/bin/render_start.sh
 RUN chmod +x /usr/local/bin/render_start.sh
 CMD ["/usr/local/bin/render_start.sh"]
-
-# =========================================================
-# 10️⃣ LIMPIEZA FINAL (Reduce tamaño de imagen)
-# =========================================================
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*

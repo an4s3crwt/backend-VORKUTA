@@ -33,6 +33,8 @@ class AuthController extends Controller
      */
     public function login(Request $request)
     {
+        \Log::info('LOGIN ATTEMPT - Headers:', ['auth' => $request->header('Authorization')]);
+    \Log::info('LOGIN ATTEMPT - Bearer Token:', ['token' => $request->bearerToken()]);
         try {
             // 1. OBTENER EL TOKEN (Manual, sin middleware)
             $token = $request->bearerToken();
@@ -43,16 +45,17 @@ class AuthController extends Controller
 
             // 2. VERIFICAR CON FIREBASE (Aquí usamos la librería real)
             try {
-                $verifiedIdToken = $this->firebaseAuth->verifyIdToken($token);
-                $uid = $verifiedIdToken->claims()->get('sub');
-                
-                // Obtenemos los datos del token para actualizar
-                $firebaseUser = $this->firebaseAuth->getUser($uid);
-                
-            } catch (Throwable $e) {
-                return response()->json(['error' => 'Token inválido o expirado: ' . $e->getMessage()], 401);
-            }
-
+            // Margen de tolerancia de reloj
+            $verifiedIdToken = $this->firebaseAuth->verifyIdToken($token, false, 600);
+            $uid = $verifiedIdToken->claims()->get('sub');
+            
+            // Obtenemos los datos del token para actualizar
+            $firebaseUser = $this->firebaseAuth->getUser($uid);
+            
+        } catch (Throwable $e) {
+            \Log::error('Error validando token en login: ' . $e->getMessage());
+            return response()->json(['error' => 'Token inválido o expirado: ' . $e->getMessage()], 401);
+        }
             Log::info('Firebase UID received and verified:', ['uid' => $uid]);
 
             // 3. BUSCAR O CREAR USUARIO (Sincronización Automática)

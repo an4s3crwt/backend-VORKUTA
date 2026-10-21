@@ -7,7 +7,6 @@ use App\Http\Controllers\OpenSkyController;
 use App\Http\Controllers\UserPreferencesController;
 use App\Http\Controllers\SavedFlightController;
 use App\Http\Controllers\FlightViewController;
-use App\Http\Controllers\AirportController;
 use App\Http\Controllers\DelayController;
 use App\Http\Controllers\AirlineController;
 use App\Http\Controllers\AirportStatsController;
@@ -16,7 +15,8 @@ use App\Http\Controllers\FlightController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\SystemMetricsController;
 use App\Jobs\FailOnPurpose;
-
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
 /*
 |--------------------------------------------------------------------------
 | API Routes - VORKUTA
@@ -35,6 +35,24 @@ Route::prefix('v1')->group(function () {
     // 🔓 Login / Register (Firebase ID Token → Sanctum)
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);
+    // HexDB Proxy (Evita CORS en el frontend y cachea fichas técnicas)
+        Route::prefix('hexdb')->group(function () {
+            Route::get('/aircraft/{hex}', function ($hex) {
+                return Cache::remember("hexdb_aircraft_{$hex}", 86400, function () use ($hex) {
+                    $response = Http::timeout(4)->get("https://hexdb.io/api/v1/aircraft/{$hex}");
+                    return response($response->body(), $response->status())
+                        ->header('Content-Type', 'application/json');
+                });
+            });
+
+            Route::get('/route/{callsign}', function ($callsign) {
+                $response = Http::timeout(4)->get("https://hexdb.io/callsign-route-iata", [
+                    'callsign' => $callsign
+                ]);
+                return response($response->body(), $response->status())
+                    ->header('Content-Type', 'text/plain');
+            });
+        });
 
     // =========================================================================
     // 2. RUTAS PROTEGIDAS (USUARIO LOGUEADO)
@@ -42,7 +60,7 @@ Route::prefix('v1')->group(function () {
     // =========================================================================
     Route::middleware([
         'auth:sanctum',
-        'check.user',
+        //'check.user',
 
         // logging (ya con usuario autenticado)
         \App\Http\Middleware\LogPerformance::class,
@@ -66,13 +84,13 @@ Route::prefix('v1')->group(function () {
         Route::get('/flights/airport/{icao_code}', [OpenSkyController::class, 'getLiveFlightsToAirport']);
 
         // Aeropuertos / Aerolíneas
-        Route::get('/airports', [AirportController::class, 'index']);
+        Route::get('/airports', [AirportStatsController::class, 'index']);
         Route::get('/airports/{icao_code}', [OpenSkyController::class, 'getAirportInfo']);
-        Route::get('/airport-info/{icao_code}', [AirportController::class, 'show']);
-        Route::get('/airlines', [AirlineController::class, 'index']);
+        Route::get('/airport-info/{icao_code}', [AirportStatsController::class, 'show']);
+        //Route::get('/airlines', [AirlineController::class, 'index']);
 
         // Historial / Preferencias
-        Route::post('/flight/view', [FlightViewController::class, 'storeFlightView']);
+        Route::post('/flight/view', [FlightController::class, 'storeFlightView']);
         Route::get('/preferences', [UserPreferencesController::class, 'index']);
         Route::post('/preferences', [UserPreferencesController::class, 'update']);
     });

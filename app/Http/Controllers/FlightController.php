@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\FlightPatternService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB; 
-use Symfony\Component\Process\Process; 
-use Symfony\Component\Process\Exception\ProcessFailedException;
+
 
 class FlightController extends Controller
 {
@@ -51,61 +51,38 @@ class FlightController extends Controller
     }
 
     // =========================================================================
-    // 2. PREDICT DELAY (LENTO 🐢) - Ejecuta IA y Guarda en BD
+    // 2. PREDICT DELAY (AHORA INSTANTÁNEO ⚡) - Motor Determinista + BD
     // =========================================================================
-    public function predictFlightDelay(Request $request)
+    public function predictFlightDelay(Request $request, FlightPatternService $patternService)
     {
-        // Recibimos los datos que nos envía React
-        $telemetry = $request->input('flight_data');
+        $telemetry = $request->input('flight_data', []);
         $icao = $telemetry['icao24'] ?? 'unknown';
 
-        // Preparamos datos para Python (Mapeo limpio para Pandas)
-        $features = [
-            'latitude'      => $telemetry['latitude'] ?? 0.0,
-            'longitude'     => $telemetry['longitude'] ?? 0.0,
-            'velocity'      => $telemetry['velocity'] ?? 0.0,
-            'heading'       => $telemetry['heading'] ?? 0.0,
-            'baro_altitude' => $telemetry['baro_altitude'] ?? 0.0,
-            'geo_altitude'  => $telemetry['geo_altitude'] ?? 0.0,
-            'vertical_rate' => $telemetry['vertical_rate'] ?? 0.0,
-            'on_ground'     => $telemetry['on_ground'] ? true : false
-        ];
-
         try {
-            // Ejecutamos Python
-            $scriptPath = storage_path('app/scripts/predict_delay.py');
-            
-            // Pasamos los datos como un array JSON
-            $process = new Process(['python3', $scriptPath, json_encode([$features])]);
-            $process->setTimeout(20); // Damos tiempo a la IA
-            $process->run();
+            // Evaluación matemática en memoria (< 1 milisegundo)
+            $evaluation = $patternService->evaluateFlight($telemetry);
 
-            if ($process->isSuccessful()) {
-                $aiData = json_decode($process->getOutput(), true);
+            // Guardamos exactamente igual en la tabla ai_logs para tu Dashboard
+            if ($evaluation['success']) {
+                DB::table('ai_logs')->insert([
+                    'flight_icao'   => $icao,
+                    'prediction'    => $evaluation['status'],
+                    'probability'   => $evaluation['predicted_probability'],
+                    'delay_minutes' => $evaluation['delay_minutes'],
+                    'reason'        => $evaluation['explanation'],
+                    'created_at'    => now()
+                ]);
 
-                // GUARDAMOS EN LA TABLA AI_LOGS (Para que salga en tu Dashboard)
-                if (isset($aiData['success']) && $aiData['success']) {
-                    DB::table('ai_logs')->insert([
-                        'flight_icao'   => $icao,
-                        'prediction'    => $aiData['status'],
-                        'probability'   => $aiData['predicted_probability'],
-                        'delay_minutes' => $aiData['delay_minutes'],
-                        'reason'        => $aiData['explanation'],
-                        'created_at'    => now()
-                    ]);
-                    
-                    return response()->json($aiData); // Devolvemos el resultado al frontend
-                }
+                return response()->json($evaluation);
             }
-            
-            return response()->json(['success' => false, 'error' => 'AI execution failed']);
+
+            return response()->json(['success' => false, 'error' => 'Evaluation failed']);
 
         } catch (\Exception $e) {
-            \Log::error("AI Error: " . $e->getMessage());
-            return response()->json(['success' => false, 'error' => $e->getMessage()]);
+            \Log::error("Analysis Error: " . $e->getMessage());
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
     }
-
     // =========================================================================
     // OTRAS FUNCIONES (Mantener igual)
     // =========================================================================
