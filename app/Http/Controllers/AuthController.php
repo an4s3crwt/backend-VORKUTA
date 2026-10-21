@@ -119,52 +119,38 @@ class AuthController extends Controller
      * Register a new user with Firebase data
      */
     public function register(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'firebase_uid' => 'required|string', // Quitamos unique estricto por si acaso
-            'email' => 'required|string|email',
-            'name' => 'required|string',
+{
+    $request->validate([
+        'email' => 'required|email',
+        'name' => 'required|string',
+        'firebase_uid' => 'required|string',
+    ]);
+
+    // Buscar si ya existe o crearlo
+    $user = User::where('email', $request->email)->first();
+
+    if (!$user) {
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make(Str::random(24)), // Evita el fallo de NOT NULL en PostgreSQL
+            'firebase_uid' => $request->firebase_uid,
         ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 400);
-        }
-
-        try {
-            // Verificar que el usuario existe en Firebase real
-            $firebaseUser = $this->firebaseAuth->getUser($request->firebase_uid);
-            
-            // Usamos firstOrCreate para evitar duplicados si le das dos veces al botón
-            $user = User::firstOrCreate(
-                ['firebase_uid' => $request->firebase_uid],
-                [
-                    'email' => $request->email,
-                    'name' => $request->name,
-                    'password' => bcrypt(uniqid()), 
-                    'firebase_data' => [
-                        'email_verified' => $firebaseUser->emailVerified,
-                        'metadata' => [
-                            'created_at' => $firebaseUser->metadata->createdAt,
-                            'last_login_at' => $firebaseUser->metadata->lastLoginAt,
-                        ],
-                    ],
-                ]
-            );
-
-            // Generar token
-            $sanctumToken = $user->createToken('auth_token')->plainTextToken;
-
-            return response()->json([
-                'message' => 'User registered successfully',
-                'user' => $this->formatUserResponse($user),
-                'access_token' => $sanctumToken,
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Registration error: '.$e->getMessage());
-            return response()->json(['error' => 'Registration failed', 'details' => $e->getMessage()], 500);
-        }
+    } else {
+        $user->update([
+            'firebase_uid' => $request->firebase_uid,
+        ]);
     }
+
+    // Generar token Sanctum
+    $token = $user->createToken('auth_token')->plainTextToken;
+
+    return response()->json([
+        'user' => $user,
+        'access_token' => $token,
+        'token_type' => 'Bearer',
+    ], 200);
+}
 
     public function logout(Request $request)
     {
