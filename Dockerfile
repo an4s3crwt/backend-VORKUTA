@@ -40,6 +40,8 @@ RUN docker-php-ext-install \
 # =========================================================
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+
+RUN a2enmod rewrite headers
 # =========================================================
 # 4️⃣ WORKDIR
 # =========================================================
