@@ -4,70 +4,60 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\User;
-use Kreait\Firebase\Auth as FirebaseAuth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Kreait\Firebase\Exception\AuthException;
 use Throwable;
 
-
 class AuthController extends Controller
 {
-    protected $firebaseAuth;
-
-    public function __construct(FirebaseAuth $firebaseAuth)
+    public function __construct()
     {
-        $this->firebaseAuth = $firebaseAuth;
-        
-        // --- CAMBIO CLAVE PARA QUE NO DE NETWORK ERROR ---
-        // Excluimos 'login' del middleware para verificar el token manualmente dentro
-        // Así evitamos que Apache/Render bloqueen la petición antes de entrar.
         $this->middleware('firebase.auth')->except(['register', 'login']);  
-        
         $this->middleware('check.user')->only(['me']); 
-        // $this->middleware('check.admin')->only(['adminDashboard']); // Descomenta cuando tengas el dashboard
     }
 
     /**
-     * LOGIN PROFESIONAL (Con verificación manual para evitar CORS/Middleware issues)
+     * LOGIN PROFESIONAL
      */
     public function login(Request $request)
     {
-        \Log::info('LOGIN ATTEMPT - Headers:', ['auth' => $request->header('Authorization')]);
-    \Log::info('LOGIN ATTEMPT - Bearer Token:', ['token' => $request->bearerToken()]);
+        Log::info('LOGIN ATTEMPT - Headers:', ['auth' => $request->header('Authorization')]);
+        Log::info('LOGIN ATTEMPT - Bearer Token:', ['token' => $request->bearerToken()]);
+
         try {
-            // 1. OBTENER EL TOKEN (Manual, sin middleware)
+            // Obtenemos la instancia configurada en FirebaseAuthServiceProvider
+            $firebaseAuth = app('firebase.auth');
+
+            // 1. OBTENER EL TOKEN
             $token = $request->bearerToken();
             
             if (!$token) {
                 return response()->json(['error' => 'Token no proporcionado'], 401);
             }
 
-            // 2. VERIFICAR CON FIREBASE (Aquí usamos la librería real)
+            // 2. VERIFICAR CON FIREBASE
             try {
-            // Margen de tolerancia de reloj
-            $verifiedIdToken = $this->firebaseAuth->verifyIdToken($token, false, 600);
-            $uid = $verifiedIdToken->claims()->get('sub');
-            
-            // Obtenemos los datos del token para actualizar
-            $firebaseUser = $this->firebaseAuth->getUser($uid);
-            
-        } catch (Throwable $e) {
-            \Log::error('Error validando token en login: ' . $e->getMessage());
-            return response()->json(['error' => 'Token inválido o expirado: ' . $e->getMessage()], 401);
-        }
+                $verifiedIdToken = $firebaseAuth->verifyIdToken($token, false, 600);
+                $uid = $verifiedIdToken->claims()->get('sub');
+                $firebaseUser = $firebaseAuth->getUser($uid);
+            } catch (Throwable $e) {
+                Log::error('Error validando token en login: ' . $e->getMessage());
+                return response()->json(['error' => 'Token inválido o expirado: ' . $e->getMessage()], 401);
+            }
+
             Log::info('Firebase UID received and verified:', ['uid' => $uid]);
 
-            // 3. BUSCAR O CREAR USUARIO (Sincronización Automática)
-            // Si el usuario existe en Firebase pero no en SQL (porque borramos la tabla),
-            // lo creamos al vuelo para que no de error 404.
+            // 3. BUSCAR O CREAR USUARIO (Sincronización Automática con Postgres)
             $user = User::firstOrCreate(
                 ['firebase_uid' => $uid],
                 [
                     'email' => $firebaseUser->email,
                     'name' => $firebaseUser->displayName ?? explode('@', $firebaseUser->email)[0],
-                    'password' => bcrypt($uid), // Password dummy
+                    'password' => bcrypt($uid),
                     'firebase_data' => [
                          'email_verified' => $firebaseUser->emailVerified,
                          'metadata' => [
@@ -77,8 +67,7 @@ class AuthController extends Controller
                 ]
             );
 
-            // 4. GENERAR TOKEN SANCTUM (Para que Laravel te deje seguir navegando)
-            // Borramos tokens viejos para no acumular basura
+            // 4. GENERAR TOKEN SANCTUM
             $user->tokens()->delete();
             $sanctumToken = $user->createToken('auth_token')->plainTextToken;
 
@@ -86,7 +75,6 @@ class AuthController extends Controller
             // AUDITORÍA (LOGS)
             // =========================================================
             try {
-                // Verificamos si la tabla logs existe antes de insertar (por si acaso)
                 if (\Illuminate\Support\Facades\Schema::hasTable('logs')) {
                     DB::table('logs')->insert([
                         'user_id'    => $user->id,
@@ -100,12 +88,11 @@ class AuthController extends Controller
             } catch (\Exception $logEx) {
                 Log::error("Error log auditoría: " . $logEx->getMessage());
             }
-            // =========================================================
 
             return response()->json([
                 'message' => 'Login successful',
                 'user' => $this->formatUserResponse($user),
-                'access_token' => $sanctumToken, // IMPORTANTE para el Frontend
+                'access_token' => $sanctumToken,
                 'token_type' => 'Bearer',
                 'is_admin' => $user->isAdmin(),
             ]);
@@ -120,38 +107,36 @@ class AuthController extends Controller
      * Register a new user with Firebase data
      */
     public function register(Request $request)
-{
-    $request->validate([
-        'email' => 'required|email',
-        'name' => 'required|string',
-        'firebase_uid' => 'required|string',
-    ]);
-
-    // Buscar si ya existe o crearlo
-    $user = User::where('email', $request->email)->first();
-
-    if (!$user) {
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make(Str::random(24)), // Evita el fallo de NOT NULL en PostgreSQL
-            'firebase_uid' => $request->firebase_uid,
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'name' => 'required|string',
+            'firebase_uid' => 'required|string',
         ]);
-    } else {
-        $user->update([
-            'firebase_uid' => $request->firebase_uid,
-        ]);
+
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make(Str::random(24)),
+                'firebase_uid' => $request->firebase_uid,
+            ]);
+        } else {
+            $user->update([
+                'firebase_uid' => $request->firebase_uid,
+            ]);
+        }
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'user' => $user,
+            'access_token' => $token,
+            'token_type' => 'Bearer',
+        ], 200);
     }
-
-    // Generar token Sanctum
-    $token = $user->createToken('auth_token')->plainTextToken;
-
-    return response()->json([
-        'user' => $user,
-        'access_token' => $token,
-        'token_type' => 'Bearer',
-    ], 200);
-}
 
     public function logout(Request $request)
     {
@@ -161,7 +146,6 @@ class AuthController extends Controller
         return response()->json(['message' => 'Logout successful']);
     }
 
-    // Helper para formatear
     protected function formatUserResponse(User $user)
     {
         return [
@@ -174,9 +158,6 @@ class AuthController extends Controller
         ];
     }
 
-    /**
-     * Get current authenticated user details for Profile Page
-     */
     public function me(Request $request)
     {
         $user = $request->user();
@@ -186,13 +167,13 @@ class AuthController extends Controller
         }
 
         return response()->json([
-            'id'            => $user->id,
-            'name'          => $user->name,
-            'email'         => $user->email,
-            'avatar_url'    => $user->photo_url, 
-            'role'          => $user->role,
-            'is_admin'      => $user->role === 'admin',
-            'created_at'    => $user->created_at,
+            'id'         => $user->id,
+            'name'       => $user->name,
+            'email'      => $user->email,
+            'avatar_url' => $user->photo_url, 
+            'role'       => $user->role,
+            'is_admin'   => $user->role === 'admin',
+            'created_at' => $user->created_at,
         ]);
     }
 }
