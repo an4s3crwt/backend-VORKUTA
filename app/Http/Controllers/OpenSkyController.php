@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 class OpenSkyController extends Controller
 {
     /**
-     * Helper para obtener Firebase Auth bajo demanda si se necesita
+     * Instancia de Firebase bajo demanda para evitar errores de inyección
      */
     protected function getFirebaseAuth()
     {
@@ -26,6 +26,9 @@ class OpenSkyController extends Controller
         try {
             $user = $this->getFirebaseAuth()->getUser($uid);
             return response()->json(['user' => $user], 200);
+        } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
+            Log::error('User not found in Firebase with UID: ' . $uid);
+            return response()->json(['error' => 'User not found'], 404);
         } catch (\Exception $e) {
             Log::error('Error fetching Firebase user: ' . $e->getMessage());
             return response()->json(['error' => 'Error fetching Firebase user'], 500);
@@ -49,6 +52,7 @@ class OpenSkyController extends Controller
                 ];
             }
 
+            // Lectura segura a través de config (compatible con config:cache)
             $username = config('services.opensky.username') ?? env('OPENSKY_USERNAME');
             $password = config('services.opensky.password') ?? env('OPENSKY_PASSWORD');
 
@@ -59,28 +63,22 @@ class OpenSkyController extends Controller
 
             $response = $client->get('https://opensky-network.org/api/states/all', $params);
 
-            // Si OpenSky da 429 (límite de peticiones)
-            if ($response->status() === 429) {
-                Log::warning('OpenSky API rate limit (429)');
-                return response()->json([
-                    'time' => time(),
-                    'states' => [],
-                    'warning' => 'Rate limit exceeded, please wait a few seconds'
-                ], 200);
-            }
-
             if ($response->failed()) {
-                Log::error('OpenSky API failed: ' . $response->status());
-                return response()->json(['error' => 'Failed to fetch flight data'], 500);
+                Log::error('OpenSky API failed: ' . $response->status() . ' - Body: ' . $response->body());
+                return response()->json([
+                    'error' => 'Failed to fetch flight data',
+                    'status' => $response->status()
+                ], 500);
             }
 
             $data = $response->json();
 
-            if (!isset($data['states'])) {
+            if (!isset($data['states']) || !is_array($data['states'])) {
+                Log::warning('OpenSky devolvió un array vacío o formato inválido', ['response' => $data]);
                 return response()->json(['error' => 'Invalid data format from API'], 500);
             }
 
-            // Tu filtro original intacto
+            // Filtro original que tenías configurado
             $filteredStates = collect($data['states'])
                 ->filter(function ($flight) {
                     return $flight[0] && $flight[1] && $flight[5] && $flight[6]; // ICAO24, callsign, lat, lon
@@ -96,7 +94,7 @@ class OpenSkyController extends Controller
 
         } catch (\Exception $e) {
             Log::error('getStatesAll error: ' . $e->getMessage());
-            return response()->json(['error' => 'Internal server error'], 500);
+            return response()->json(['error' => 'Internal server error: ' . $e->getMessage()], 500);
         }
     }
 
