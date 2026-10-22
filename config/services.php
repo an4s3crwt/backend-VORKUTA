@@ -25,8 +25,11 @@ return [
     ],
 
     'firebase' => [
-    'project_id' => env('FIREBASE_PROJECT_ID'),
-    'credentials' => json_decode(env('FIREBASE_CREDENTIALS'), true),
+        'project_id' => env('FIREBASE_PROJECT_ID'),
+        'credentials' => env('FIREBASE_CREDENTIALS_JSON') 
+            ? json_decode(env('FIREBASE_CREDENTIALS_JSON'), true) 
+            : (file_exists(storage_path('credentials.json')) ? storage_path('credentials.json') : null),
+    
 ],
 
 
