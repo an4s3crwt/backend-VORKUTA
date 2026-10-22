@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Kreait\Firebase\Exception\AuthException;
 use Throwable;
 
+
 class AuthController extends Controller
 {
     protected $firebaseAuth;
