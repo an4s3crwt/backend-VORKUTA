@@ -2,33 +2,38 @@
 
 namespace App\Providers;
 
-use Kreait\Firebase\Factory;
-use Kreait\Firebase\Auth;
-use Kreait\Firebase\Exception\AuthException;
 use Illuminate\Support\ServiceProvider;
+use Kreait\Firebase\Factory;
 
 class FirebaseAuthServiceProvider extends ServiceProvider
 {
-    protected $firebaseAuth;
-
-    public function register()
+    public function register(): void
     {
-        $this->app->bind(Auth::class, function ($app) {
-            $credentialsPath = storage_path('credentials.json');
+        $this->app->singleton('firebase.auth', function ($app) {
+            $factory = new Factory();
 
-            if (!file_exists($credentialsPath)) {
-                throw new \Exception("Firebase credentials file not found at: {$credentialsPath}");
+            // 1. Si existe la variable de entorno con el JSON en Render, úsala directamente
+            if (env('FIREBASE_CREDENTIALS_JSON')) {
+                $credentials = json_decode(env('FIREBASE_CREDENTIALS_JSON'), true);
+                $factory = $factory->withServiceAccount($credentials);
+            } 
+            // 2. Si no, busca el archivo físico en storage/credentials.json
+            elseif (file_exists(storage_path('credentials.json'))) {
+                $factory = $factory->withServiceAccount(storage_path('credentials.json'));
+            } 
+            // 3. O en la carpeta de secretos de Render
+            elseif (file_exists('/etc/secrets/credentials.json')) {
+                $factory = $factory->withServiceAccount('/etc/secrets/credentials.json');
+            } 
+            else {
+                throw new \Exception("No se encontraron credenciales de Firebase ni en variable de entorno ni en storage/credentials.json");
             }
 
-            $this->firebaseAuth = (new Factory)
-                ->withServiceAccount($credentialsPath)
-                ->createAuth();
-
-            return $this->firebaseAuth;
+            return $factory->createAuth();
         });
     }
 
-    public function boot()
+    public function boot(): void
     {
         //
     }
