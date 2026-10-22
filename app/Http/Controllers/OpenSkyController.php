@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Request;
 
 class OpenSkyController extends Controller
@@ -38,7 +39,7 @@ class OpenSkyController extends Controller
     /**
      * Método para obtener todos los estados de vuelos
      */
-   public function getStatesAll(Request $request)
+    public function getStatesAll(Request $request)
     {
         try {
             $params = [];
@@ -57,12 +58,20 @@ class OpenSkyController extends Controller
             $globalFallbackKey = 'opensky_last_known_flights';
 
             // 1. Si tenemos datos cacheados para esta zona (menos de 10 seg), los servimos
-            if (\Illuminate\Support\Facades\Cache::has($cacheKey)) {
-                return response()->json(\Illuminate\Support\Facades\Cache::get($cacheKey), 200);
+            if (Cache::has($cacheKey)) {
+                return response()->json(Cache::get($cacheKey), 200);
             }
 
             $username = config('services.opensky.username') ?? env('OPENSKY_USERNAME');
             $password = config('services.opensky.password') ?? env('OPENSKY_PASSWORD');
+
+            // --- LOG DE DEPURACIÓN DE CREDENCIALES ---
+            Log::info('OpenSky auth check:', [
+                'has_user' => !empty($username),
+                'user_length' => strlen($username ?? ''),
+                'has_pass' => !empty($password),
+                'has_bounds' => !empty($params),
+            ]);
 
             $client = Http::timeout(10);
             if (!empty($username) && !empty($password)) {
@@ -71,13 +80,12 @@ class OpenSkyController extends Controller
 
             $response = $client->get('https://opensky-network.org/api/states/all', $params);
 
-            // 2. Si OpenSky da 429 (Too Many Requests), NO fallamos con 500:
-            // Devolvemos el último estado conocido o un array vacío con 200 OK
+            // 2. Si OpenSky da 429 (Too Many Requests) o falla:
             if ($response->status() === 429 || $response->failed()) {
-                Log::warning('OpenSky devolvió ' . $response->status() . '. Sirviendo datos de respaldo o vacío.');
+                Log::warning('OpenSky devolvió ' . $response->status() . ' - Body: ' . $response->body());
 
-                if (\Illuminate\Support\Facades\Cache::has($globalFallbackKey)) {
-                    return response()->json(\Illuminate\Support\Facades\Cache::get($globalFallbackKey), 200);
+                if (Cache::has($globalFallbackKey)) {
+                    return response()->json(Cache::get($globalFallbackKey), 200);
                 }
 
                 return response()->json([
@@ -90,6 +98,7 @@ class OpenSkyController extends Controller
             $data = $response->json();
 
             if (!isset($data['states']) || !is_array($data['states'])) {
+                Log::warning('OpenSky devolvió states nulo o vacío', ['response' => $data]);
                 return response()->json(['time' => time(), 'states' => []], 200);
             }
 
@@ -104,7 +113,7 @@ class OpenSkyController extends Controller
                     }
                     return $flight;
                 })
-                ->take(250)
+                ->take(300)
                 ->values()
                 ->all();
 
@@ -114,16 +123,16 @@ class OpenSkyController extends Controller
             ];
 
             // Guardamos en caché local (10 segundos) y global de respaldo (2 minutos)
-            \Illuminate\Support\Facades\Cache::put($cacheKey, $payload, 10);
-            \Illuminate\Support\Facades\Cache::put($globalFallbackKey, $payload, 120);
+            Cache::put($cacheKey, $payload, 10);
+            Cache::put($globalFallbackKey, $payload, 120);
 
             return response()->json($payload, 200);
 
         } catch (\Throwable $e) {
             Log::error('getStatesAll fatal error: ' . $e->getMessage());
 
-            if (\Illuminate\Support\Facades\Cache::has('opensky_last_known_flights')) {
-                return response()->json(\Illuminate\Support\Facades\Cache::get('opensky_last_known_flights'), 200);
+            if (Cache::has('opensky_last_known_flights')) {
+                return response()->json(Cache::get('opensky_last_known_flights'), 200);
             }
 
             return response()->json(['time' => time(), 'states' => []], 200);
