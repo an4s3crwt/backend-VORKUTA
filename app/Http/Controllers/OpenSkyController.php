@@ -38,7 +38,7 @@ class OpenSkyController extends Controller
     /**
      * Método para obtener todos los estados de vuelos
      */
-    public function getStatesAll(Request $request)
+   public function getStatesAll(Request $request)
     {
         try {
             $params = [];
@@ -52,49 +52,81 @@ class OpenSkyController extends Controller
                 ];
             }
 
-            // Lectura segura a través de config (compatible con config:cache)
+            // Claves de caché para evitar golpear a OpenSky en cada movimiento
+            $cacheKey = 'opensky_bounds_' . md5(json_encode($params));
+            $globalFallbackKey = 'opensky_last_known_flights';
+
+            // 1. Si tenemos datos cacheados para esta zona (menos de 10 seg), los servimos
+            if (\Illuminate\Support\Facades\Cache::has($cacheKey)) {
+                return response()->json(\Illuminate\Support\Facades\Cache::get($cacheKey), 200);
+            }
+
             $username = config('services.opensky.username') ?? env('OPENSKY_USERNAME');
             $password = config('services.opensky.password') ?? env('OPENSKY_PASSWORD');
 
-            $client = Http::timeout(15);
+            $client = Http::timeout(10);
             if (!empty($username) && !empty($password)) {
                 $client = $client->withBasicAuth($username, $password);
             }
 
             $response = $client->get('https://opensky-network.org/api/states/all', $params);
 
-            if ($response->failed()) {
-                Log::error('OpenSky API failed: ' . $response->status() . ' - Body: ' . $response->body());
+            // 2. Si OpenSky da 429 (Too Many Requests), NO fallamos con 500:
+            // Devolvemos el último estado conocido o un array vacío con 200 OK
+            if ($response->status() === 429 || $response->failed()) {
+                Log::warning('OpenSky devolvió ' . $response->status() . '. Sirviendo datos de respaldo o vacío.');
+
+                if (\Illuminate\Support\Facades\Cache::has($globalFallbackKey)) {
+                    return response()->json(\Illuminate\Support\Facades\Cache::get($globalFallbackKey), 200);
+                }
+
                 return response()->json([
-                    'error' => 'Failed to fetch flight data',
-                    'status' => $response->status()
-                ], 500);
+                    'time' => time(),
+                    'states' => [],
+                    'warning' => 'OpenSky rate limit hit. Reintentando...'
+                ], 200);
             }
 
             $data = $response->json();
 
             if (!isset($data['states']) || !is_array($data['states'])) {
-                Log::warning('OpenSky devolvió un array vacío o formato inválido', ['response' => $data]);
-                return response()->json(['error' => 'Invalid data format from API'], 500);
+                return response()->json(['time' => time(), 'states' => []], 200);
             }
 
-            // Filtro original que tenías configurado
+            // Filtrar aviones válidos con coordenadas
             $filteredStates = collect($data['states'])
                 ->filter(function ($flight) {
-                    return $flight[0] && $flight[1] && $flight[5] && $flight[6]; // ICAO24, callsign, lat, lon
+                    return !empty($flight[0]) && isset($flight[5], $flight[6]) && $flight[5] !== null && $flight[6] !== null;
                 })
-                ->take(200)
+                ->map(function ($flight) {
+                    if (empty(trim($flight[1] ?? ''))) {
+                        $flight[1] = 'UNKNOWN';
+                    }
+                    return $flight;
+                })
+                ->take(250)
                 ->values()
                 ->all();
 
-            return response()->json([
+            $payload = [
                 'time' => $data['time'] ?? time(),
                 'states' => $filteredStates,
-            ]);
+            ];
 
-        } catch (\Exception $e) {
-            Log::error('getStatesAll error: ' . $e->getMessage());
-            return response()->json(['error' => 'Internal server error: ' . $e->getMessage()], 500);
+            // Guardamos en caché local (10 segundos) y global de respaldo (2 minutos)
+            \Illuminate\Support\Facades\Cache::put($cacheKey, $payload, 10);
+            \Illuminate\Support\Facades\Cache::put($globalFallbackKey, $payload, 120);
+
+            return response()->json($payload, 200);
+
+        } catch (\Throwable $e) {
+            Log::error('getStatesAll fatal error: ' . $e->getMessage());
+
+            if (\Illuminate\Support\Facades\Cache::has('opensky_last_known_flights')) {
+                return response()->json(\Illuminate\Support\Facades\Cache::get('opensky_last_known_flights'), 200);
+            }
+
+            return response()->json(['time' => time(), 'states' => []], 200);
         }
     }
 
