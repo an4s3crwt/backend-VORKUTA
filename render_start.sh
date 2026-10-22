@@ -10,13 +10,12 @@ chown -R www-data:www-data storage bootstrap/cache
 chmod -R 775 storage bootstrap/cache
 
 # 2. Restaurar credenciales de Firebase si se pasan como variable de entorno
-# (En Render puedes crear una variable llamada FIREBASE_CREDENTIALS_JSON con el contenido del archivo)
-if [ ! -f "storage/credentials.json" ] && [ -n "$FIREBASE_CREDENTIALS_JSON" ]; then
+if [ -n "$FIREBASE_CREDENTIALS_JSON" ]; then
     echo "--> Generando storage/credentials.json desde variable de entorno..."
     echo "$FIREBASE_CREDENTIALS_JSON" > storage/credentials.json
-    chmod 600 storage/credentials.json
+    chown www-data:www-data storage/credentials.json
+    chmod 644 storage/credentials.json
 fi
-
 # 3. Descubrimiento de paquetes y assets
 echo "--> Registrando paquetes de Laravel..."
 php artisan package:discover --ansi || true
