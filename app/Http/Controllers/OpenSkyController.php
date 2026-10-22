@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 class OpenSkyController extends Controller
 {
     /**
-     * Obtenemos Firebase bajo demanda para que Laravel no explote al instanciarlo
+     * Helper para obtener Firebase Auth bajo demanda si se necesita
      */
     protected function getFirebaseAuth()
     {
@@ -17,7 +17,7 @@ class OpenSkyController extends Controller
     }
 
     /**
-     * Validar Firebase UID (Tu método original intacto)
+     * Método helper para validar Firebase UID
      */
     public function validateFirebaseUid(Request $request)
     {
@@ -26,9 +26,6 @@ class OpenSkyController extends Controller
         try {
             $user = $this->getFirebaseAuth()->getUser($uid);
             return response()->json(['user' => $user], 200);
-        } catch (\Kreait\Firebase\Exception\Auth\UserNotFound $e) {
-            Log::error('User not found in Firebase with UID: ' . $uid);
-            return response()->json(['error' => 'User not found'], 404);
         } catch (\Exception $e) {
             Log::error('Error fetching Firebase user: ' . $e->getMessage());
             return response()->json(['error' => 'Error fetching Firebase user'], 500);
@@ -36,14 +33,13 @@ class OpenSkyController extends Controller
     }
 
     /**
-     * Obtener estados de vuelos para el mapa
+     * Método para obtener todos los estados de vuelos
      */
     public function getStatesAll(Request $request)
     {
         try {
             $params = [];
 
-            // Si el frontend envía las coordenadas del cuadro visible del mapa
             if ($request->has(['lamin', 'lamax', 'lomin', 'lomax'])) {
                 $params = [
                     'lamin' => $request->input('lamin'),
@@ -53,7 +49,6 @@ class OpenSkyController extends Controller
                 ];
             }
 
-            // Credenciales usando config() para que no fallen con config:cache
             $username = config('services.opensky.username') ?? env('OPENSKY_USERNAME');
             $password = config('services.opensky.password') ?? env('OPENSKY_PASSWORD');
 
@@ -64,36 +59,33 @@ class OpenSkyController extends Controller
 
             $response = $client->get('https://opensky-network.org/api/states/all', $params);
 
-            if ($response->failed()) {
-                Log::error('OpenSky API failed with status: ' . $response->status());
+            // Si OpenSky da 429 (límite de peticiones)
+            if ($response->status() === 429) {
+                Log::warning('OpenSky API rate limit (429)');
                 return response()->json([
-                    'error' => 'Failed to fetch flight data', 
-                    'status' => $response->status()
-                ], $response->status() === 429 ? 429 : 502);
+                    'time' => time(),
+                    'states' => [],
+                    'warning' => 'Rate limit exceeded, please wait a few seconds'
+                ], 200);
+            }
+
+            if ($response->failed()) {
+                Log::error('OpenSky API failed: ' . $response->status());
+                return response()->json(['error' => 'Failed to fetch flight data'], 500);
             }
 
             $data = $response->json();
 
-            if (!isset($data['states']) || !is_array($data['states'])) {
-                return response()->json([
-                    'time' => time(),
-                    'states' => []
-                ], 200);
+            if (!isset($data['states'])) {
+                return response()->json(['error' => 'Invalid data format from API'], 500);
             }
 
-            // Filtro flexible: solo exige que el avión tenga ICAO y coordenadas GPS válidas
+            // Tu filtro original intacto
             $filteredStates = collect($data['states'])
                 ->filter(function ($flight) {
-                    return !empty($flight[0]) && isset($flight[5]) && isset($flight[6]) && $flight[5] !== null && $flight[6] !== null;
+                    return $flight[0] && $flight[1] && $flight[5] && $flight[6]; // ICAO24, callsign, lat, lon
                 })
-                ->map(function ($flight) {
-                    // Si el callsign viene vacío o nulo, le ponemos un valor legible para que el frontend no falle al pintar
-                    if (empty(trim($flight[1] ?? ''))) {
-                        $flight[1] = 'NO-CALLSIGN';
-                    }
-                    return $flight;
-                })
-                ->take(300)
+                ->take(200)
                 ->values()
                 ->all();
 
@@ -104,7 +96,7 @@ class OpenSkyController extends Controller
 
         } catch (\Exception $e) {
             Log::error('getStatesAll error: ' . $e->getMessage());
-            return response()->json(['error' => 'Internal server error: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Internal server error'], 500);
         }
     }
 
@@ -137,7 +129,7 @@ class OpenSkyController extends Controller
 
             $filteredStates = collect($data['states'])
                 ->filter(function ($flight) {
-                    return !empty($flight[0]) && isset($flight[5], $flight[6]) && $flight[5] !== null && $flight[6] !== null;
+                    return $flight[0] && $flight[1] && $flight[5] && $flight[6];
                 })
                 ->take(200)
                 ->values()
