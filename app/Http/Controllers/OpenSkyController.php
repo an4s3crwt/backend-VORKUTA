@@ -1,175 +1,96 @@
 <?php
+
 namespace App\Http\Controllers;
 
-use Kreait\Firebase\Auth as FirebaseAuth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Request;
 
 class OpenSkyController extends Controller
 {
-    protected $firebaseAuth;
-
-    public function __construct(FirebaseAuth $firebaseAuth)
-    {
-        $this->firebaseAuth = $firebaseAuth;
-    }
-
     /**
-     * Método helper para validar Firebase UID
+     * Obtener estados de vuelos con caché temporal para OpenSky
      */
-    // Método para validar UID de Firebase
-    public function validateFirebaseUid(Request $request)
-    {
-        $uid = $request->input('uid'); // Suponiendo que el UID viene en el cuerpo de la solicitud
-
-        try {
-            // Intentar obtener el usuario con el UID
-            $user = $this->firebaseAuth->getUser($uid);
-            return response()->json(['user' => $user], 200); // Si todo está bien, devolver los detalles del usuario
-        } catch (UserNotFound $e) {
-            // Si no se encuentra el usuario en Firebase
-            Log::error('User not found in Firebase with UID: ' . $uid);
-            return response()->json(['error' => 'User not found'], 404);
-        } catch (\Exception $e) {
-            // Cualquier otro error
-            Log::error('Error fetching Firebase user: ' . $e->getMessage());
-            return response()->json(['error' => 'Error fetching Firebase user'], 500);
-        }
-    }
-    /**
-     * Método para obtener todos los estados de vuelos (requiere autenticación Firebase)
-     */
-   public function getStatesAll(Request $request)
-{
-    try {
-        $params = [];
-
-        if ($request->has(['lamin', 'lamax', 'lomin', 'lomax'])) {
-            $params = [
-                'lamin' => $request->input('lamin'),
-                'lamax' => $request->input('lamax'),
-                'lomin' => $request->input('lomin'),
-                'lomax' => $request->input('lomax'),
-            ];
-        }
-
-        $response = Http::withBasicAuth(env('OPENSKY_USERNAME'), env('OPENSKY_PASSWORD'))
-            ->timeout(15)
-            ->get('https://opensky-network.org/api/states/all', $params);
-
-        if ($response->failed()) {
-            Log::error('OpenSky API failed: ' . $response->status());
-            return response()->json(['error' => 'Failed to fetch flight data'], 500);
-        }
-
-        $data = $response->json();
-
-        if (!isset($data['states'])) {
-            return response()->json(['error' => 'Invalid data format from API'], 500);
-        }
-
-        $filteredStates = collect($data['states'])
-            ->filter(function ($flight) {
-                return $flight[0] && $flight[1] && $flight[5] && $flight[6]; // ICAO24, callsign, lat, lon
-            })
-            ->take(200)
-            ->values()
-            ->all();
-
-        return response()->json([
-            'time' => $data['time'] ?? time(),
-            'states' => $filteredStates,
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('getStatesAll error: ' . $e->getMessage());
-        return response()->json(['error' => 'Internal server error'], 500);
-    }
-}
-
-
-    /**
-     * Método para obtener datos en tiempo real filtrados
-     */
-    public function fetchLiveData(Request $request)
+    public function getStatesAll(Request $request)
     {
         try {
-            $username = config('services.opensky.username');
-            $password = config('services.opensky.password');
-
-            $response = Http::withBasicAuth($username, $password)
-                ->timeout(20)
-                ->get('https://opensky-network.org/api/states/all');
-
-            if ($response->failed()) {
-                Log::warning('OpenSky API failed with status: ' . $response->status());
-                return response()->json(['error' => 'Service unavailable'], 503);
+            $params = [];
+            if ($request->has(['lamin', 'lamax', 'lomin', 'lomax'])) {
+                $params = [
+                    'lamin' => $request->input('lamin'),
+                    'lamax' => $request->input('lamax'),
+                    'lomin' => $request->input('lomin'),
+                    'lomax' => $request->input('lomax'),
+                ];
             }
 
-            $data = $response->json();
+            // Clave de caché única según coordenadas (10 segundos para no saturar OpenSky)
+            $cacheKey = 'opensky_' . md5(json_encode($params));
 
-            if (!isset($data['states'])) {
-                return response()->json(['error' => 'Invalid data format'], 500);
+            $data = Cache::remember($cacheKey, 10, function () use ($params) {
+                $username = config('services.opensky.username');
+                $password = config('services.opensky.password');
+
+                $requestHttp = Http::timeout(10);
+                if (!empty($username) && !empty($password)) {
+                    $requestHttp = $requestHttp->withBasicAuth($username, $password);
+                }
+
+                $response = $requestHttp->get('https://opensky-network.org/api/states/all', $params);
+
+                if ($response->failed()) {
+                    Log::warning('OpenSky API failed with status: ' . $response->status());
+                    return null;
+                }
+
+                return $response->json();
+            });
+
+            if (!$data || !isset($data['states'])) {
+                return response()->json([
+                    'time' => time(),
+                    'states' => [],
+                    'warning' => 'OpenSky rate limit or temporary upstream unavailability'
+                ], 200);
             }
 
             $filteredStates = collect($data['states'])
                 ->filter(function ($flight) {
-                    return $flight[0] && $flight[1] && $flight[5] && $flight[6];
+                    return !empty($flight[0]) && !empty($flight[1]) && isset($flight[5], $flight[6]);
                 })
                 ->take(200)
                 ->values()
                 ->all();
 
             return response()->json([
-                'time' => $data['time'],
+                'time' => $data['time'] ?? time(),
                 'states' => $filteredStates,
-            ]);
+            ], 200);
 
-        } catch (\Exception $e) {
-            Log::error('fetchLiveData error: ' . $e->getMessage());
-            return response()->json(['error' => 'Internal server error'], 500);
+        } catch (\Throwable $e) {
+            Log::error('getStatesAll error: ' . $e->getMessage());
+            return response()->json([
+                'time' => time(),
+                'states' => [],
+                'error' => $e->getMessage()
+            ], 200);
         }
     }
 
     /**
-     * Método para escanear datos en segundo plano
+     * Datos en vivo
+     */
+    public function fetchLiveData(Request $request)
+    {
+        return $this->getStatesAll($request);
+    }
+
+    /**
+     * Escaneo de datos
      */
     public function scanLiveData(Request $request)
     {
-        try {
-            $username = config('services.opensky.username');
-            $password = config('services.opensky.password');
-
-            $response = Http::withBasicAuth($username, $password)
-                ->timeout(30)
-                ->get('https://opensky-network.org/api/states/all');
-
-            if ($response->failed()) {
-                Log::warning('OpenSky scan failed with status: ' . $response->status());
-                return response()->json(['error' => 'Service unavailable'], 503);
-            }
-
-            $data = $response->json();
-
-            if (!isset($data['states'])) {
-                return response()->json(['error' => 'Invalid data format'], 500);
-            }
-
-            return response()->json([
-                'message' => 'Scan completed successfully',
-                'count' => count($data['states']),
-                'timestamp' => $data['time']
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('scanLiveData error: ' . $e->getMessage());
-            return response()->json(['error' => 'Internal server error'], 500);
-        }
+        return $this->getStatesAll($request);
     }
-
-
-
-
-
 }
