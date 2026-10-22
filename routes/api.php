@@ -32,8 +32,8 @@ Route::prefix('v1')->group(function () {
         response()->json(['server_time' => now()->toISOString()])
     );
 
-    // 🔓 Login / Register (Firebase ID Token → Sanctum)
-    Route::post('/login', [AuthController::class, 'login']);
+    // Login / Register (Firebase ID Token → Sanctum)
+Route::post('/login', [AuthController::class, 'login'])->name('login');
     Route::post('/register', [AuthController::class, 'register']);
     // HexDB Proxy (Evita CORS en el frontend y cachea fichas técnicas)
         Route::prefix('hexdb')->group(function () {
