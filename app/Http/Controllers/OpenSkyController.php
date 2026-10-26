@@ -45,44 +45,46 @@ class OpenSkyController extends Controller
             $params = [];
 
             if ($request->has(['lamin', 'lamax', 'lomin', 'lomax'])) {
+                // Redondear a 4 decimales: OpenSky procesa mejor estas coordenadas
                 $params = [
-                    'lamin' => $request->input('lamin'),
-                    'lamax' => $request->input('lamax'),
-                    'lomin' => $request->input('lomin'),
-                    'lomax' => $request->input('lomax'),
+                    'lamin' => round((float) $request->input('lamin'), 4),
+                    'lamax' => round((float) $request->input('lamax'), 4),
+                    'lomin' => round((float) $request->input('lomin'), 4),
+                    'lomax' => round((float) $request->input('lomax'), 4),
                 ];
             }
 
-            // Claves de caché para evitar golpear a OpenSky en cada movimiento
             $cacheKey = 'opensky_bounds_' . md5(json_encode($params));
             $globalFallbackKey = 'opensky_last_known_flights';
 
-            // 1. Si tenemos datos cacheados para esta zona (menos de 10 seg), los servimos
+            // Solo usar caché si contiene aviones reales (> 0)
             if (Cache::has($cacheKey)) {
-                return response()->json(Cache::get($cacheKey), 200);
+                $cached = Cache::get($cacheKey);
+                if (!empty($cached['states'])) {
+                    return response()->json($cached, 200);
+                }
             }
 
             $username = config('services.opensky.username') ?? env('OPENSKY_USERNAME');
             $password = config('services.opensky.password') ?? env('OPENSKY_PASSWORD');
 
-            // --- LOG DE DEPURACIÓN DE CREDENCIALES ---
-            Log::info('OpenSky auth check:', [
-                'has_user' => !empty($username),
-                'user_length' => strlen($username ?? ''),
-                'has_pass' => !empty($password),
-                'has_bounds' => !empty($params),
-            ]);
-
-            $client = Http::timeout(10);
+            $client = Http::timeout(12);
             if (!empty($username) && !empty($password)) {
                 $client = $client->withBasicAuth($username, $password);
             }
 
             $response = $client->get('https://opensky-network.org/api/states/all', $params);
 
-            // 2. Si OpenSky da 429 (Too Many Requests) o falla:
+            // Log para ver el estado HTTP exacto y los primeros 150 caracteres de la respuesta
+            Log::info('OpenSky Raw Response:', [
+                'status' => $response->status(),
+                'has_user' => !empty($username),
+                'params' => $params,
+                'preview' => substr($response->body(), 0, 150),
+            ]);
+
             if ($response->status() === 429 || $response->failed()) {
-                Log::warning('OpenSky devolvió ' . $response->status() . ' - Body: ' . $response->body());
+                Log::warning('OpenSky devolvió error o 429: ' . $response->status());
 
                 if (Cache::has($globalFallbackKey)) {
                     return response()->json(Cache::get($globalFallbackKey), 200);
@@ -91,18 +93,18 @@ class OpenSkyController extends Controller
                 return response()->json([
                     'time' => time(),
                     'states' => [],
-                    'warning' => 'OpenSky rate limit hit. Reintentando...'
+                    'warning' => 'Rate limit o indisponibilidad de OpenSky'
                 ], 200);
             }
 
             $data = $response->json();
 
             if (!isset($data['states']) || !is_array($data['states'])) {
-                Log::warning('OpenSky devolvió states nulo o vacío', ['response' => $data]);
+                Log::warning('OpenSky devolvió states no array', ['data' => $data]);
                 return response()->json(['time' => time(), 'states' => []], 200);
             }
 
-            // Filtrar aviones válidos con coordenadas
+            // Filtrado: solo asegurar que tenga coordenadas válidas
             $filteredStates = collect($data['states'])
                 ->filter(function ($flight) {
                     return !empty($flight[0]) && isset($flight[5], $flight[6]) && $flight[5] !== null && $flight[6] !== null;
@@ -122,9 +124,11 @@ class OpenSkyController extends Controller
                 'states' => $filteredStates,
             ];
 
-            // Guardamos en caché local (10 segundos) y global de respaldo (2 minutos)
-            Cache::put($cacheKey, $payload, 10);
-            Cache::put($globalFallbackKey, $payload, 120);
+            // Solo guardamos en caché si encontramos vuelos reales
+            if (count($filteredStates) > 0) {
+                Cache::put($cacheKey, $payload, 15);
+                Cache::put($globalFallbackKey, $payload, 180);
+            }
 
             return response()->json($payload, 200);
 
@@ -138,7 +142,6 @@ class OpenSkyController extends Controller
             return response()->json(['time' => time(), 'states' => []], 200);
         }
     }
-
     /**
      * Método para obtener datos en tiempo real filtrados
      */
