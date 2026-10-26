@@ -31,14 +31,14 @@ class FlightController extends Controller
     }
 
     // =========================================================================
-    // 1. GET FLIGHT DATA (RÁPIDO ⚡ Y PROTEGIDO CONTRA 429)
+    // 1. GET FLIGHT DATA 
     // =========================================================================
-    public function getFlightData($icao)
+public function getFlightData($icao)
     {
         $icao = strtolower(trim($icao));
         $cacheKey = "flight_live_{$icao}";
 
-        // Servir desde caché si se pidió hace menos de 15 segundos
+        // Servir desde caché si se pidió hace menos de 10 segundos
         if (Cache::has($cacheKey)) {
             return response()->json(Cache::get($cacheKey));
         }
@@ -51,47 +51,28 @@ class FlightController extends Controller
             $client = $client->withBasicAuth($username, $password);
         }
 
-        $response = $client->get('https://opensky-network.org/api/states/all', [
-            'icao24' => $icao
-        ]);
+        try {
+            $response = $client->get('https://opensky-network.org/api/states/all', [
+                'icao24' => $icao
+            ]);
 
-        if ($response->successful()) {
-            $data = $response->json();
-            if (!empty($data['states']) && is_array($data['states'])) {
-                $this->logAction('view_flight', "Viendo avión: $icao");
-                Cache::put($cacheKey, $data, 15);
-                return response()->json($data);
+            if ($response->successful()) {
+                $data = $response->json();
+                if (!empty($data['states']) && is_array($data['states'])) {
+                    $this->logAction('view_flight', "Viendo avión: $icao");
+                    Cache::put($cacheKey, $data, 10);
+                    return response()->json($data);
+                }
             }
+        } catch (\Throwable $e) {
+            \Log::warning("OpenSky fetch failed for {$icao}: " . $e->getMessage());
         }
 
-        // Si OpenSky da 429 o viene vacío, servimos datos de respaldo válidos para que no rompa la vista
-        $fallback = [
+        // Si el avión no está en el aire o la API no responde, devolvemos states vacío
+        return response()->json([
             'time' => time(),
-            'states' => [
-                [
-                    $icao,                          // 0: icao24
-                    'IBE' . rand(100, 999),         // 1: callsign
-                    'Spain',                        // 2: country
-                    time(),                         // 3: time_position
-                    time(),                         // 4: last_contact
-                    -3.7038 + (rand(-50, 50) / 100),// 5: lon (cerca de Madrid)
-                    40.4168 + (rand(-50, 50) / 100),// 6: lat
-                    rand(4000, 11000),              // 7: altitude
-                    false,                          // 8: on_ground
-                    rand(200, 260),                 // 9: velocity
-                    rand(0, 359),                   // 10: heading
-                    0,                              // 11: vertical_rate
-                    null,                           // 12: sensors
-                    rand(4000, 11000),              // 13: geo_altitude
-                    null,                           // 14: squawk
-                    false,                          // 15: spi
-                    0                               // 16: position_source
-                ]
-            ]
-        ];
-
-        Cache::put($cacheKey, $fallback, 10);
-        return response()->json($fallback);
+            'states' => []
+        ], 200);
     }
 
     // =========================================================================
