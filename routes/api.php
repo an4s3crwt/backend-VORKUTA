@@ -82,6 +82,14 @@ Route::prefix('v1')->group(function () {
                 return response('MAD - BCN', 200)->header('Content-Type', 'text/plain');
             });
         });
+        Route::get('/airport/{iata}', function ($iata) {
+    $iata = strtoupper(trim($iata));
+    return Cache::remember("hexdb_airport_{$iata}", 86400, function () use ($iata) {
+        $response = Http::timeout(4)->get("https://hexdb.io/api/v1/airport/iata/{$iata}");
+        return response($response->body(), $response->status())
+            ->header('Content-Type', 'application/json');
+    });
+});
 
         // 3. Miniatura de imagen (binaria o fallback)
         Route::get('/image/{hex}', function ($hex) {
