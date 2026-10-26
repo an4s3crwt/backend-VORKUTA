@@ -37,10 +37,10 @@ Route::prefix('v1')->group(function () {
     Route::post('/login', [AuthController::class, 'login'])->name('login');
     Route::post('/register', [AuthController::class, 'register']);
 
-    // HexDB Proxy (Protegido contra 404, sin CORS y con imágenes válidas)
+    // HexDB Proxy (Universal, sin datos falsos fijos)
     Route::prefix('hexdb')->group(function () {
 
-        // 1. Datos técnicos del avión
+        // 1. Datos técnicos reales del avión
         Route::get('/aircraft/{hex}', function ($hex) {
             $hex = strtolower(trim($hex));
 
@@ -52,21 +52,20 @@ Route::prefix('v1')->group(function () {
                     }
                 } catch (\Throwable $e) {}
 
-                // Si HexDB no lo tiene, devolvemos 200 con datos genéricos para que la UI no rompa
                 return response()->json([
                     'ICAO' => strtoupper($hex),
-                    'Registration' => 'EC-' . substr(strtoupper($hex), 0, 3),
+                    'Registration' => 'N/A',
                     'RegisteredOwners' => 'Commercial / Private',
-                    'Manufacturer' => 'Airbus / Boeing',
-                    'Model' => 'Commercial Airliner',
-                    'Type' => 'Passenger'
+                    'Manufacturer' => 'Airliner',
+                    'Model' => '',
+                    'Type' => ''
                 ], 200);
             });
         });
 
-        // 2. Ruta de origen y destino
+        // 2. Ruta real por callsign (SOLO devuelve si existe una ruta real con guion)
         Route::get('/route/{callsign}', function ($callsign) {
-            $callsign = trim($callsign);
+            $callsign = strtoupper(trim($callsign));
 
             return Cache::remember("hexdb_route_{$callsign}", 86400, function () use ($callsign) {
                 try {
@@ -74,24 +73,34 @@ Route::prefix('v1')->group(function () {
                         'callsign' => $callsign
                     ]);
                     $route = trim($response->body());
-                    if ($response->successful() && !empty($route) && !str_contains($route, 'Unknown')) {
+                    if ($response->successful() && !empty($route) && str_contains($route, '-') && !str_contains($route, 'Unknown')) {
                         return response($route, 200)->header('Content-Type', 'text/plain');
                     }
                 } catch (\Throwable $e) {}
 
-                return response('MAD - BCN', 200)->header('Content-Type', 'text/plain');
+                // Si no hay ruta real registrada para ese callsign, devolvemos vacío (NO inventamos MAD-BCN)
+                return response('', 204)->header('Content-Type', 'text/plain');
             });
         });
-        Route::get('/airport/{iata}', function ($iata) {
-    $iata = strtoupper(trim($iata));
-    return Cache::remember("hexdb_airport_{$iata}", 86400, function () use ($iata) {
-        $response = Http::timeout(4)->get("https://hexdb.io/api/v1/airport/iata/{$iata}");
-        return response($response->body(), $response->status())
-            ->header('Content-Type', 'application/json');
-    });
-});
 
-        // 3. Miniatura de imagen (binaria o fallback)
+        // 3. Coordenadas reales de cualquier aeropuerto del mundo por código IATA
+        Route::get('/airport/{iata}', function ($iata) {
+            $iata = strtoupper(trim($iata));
+
+            return Cache::remember("hexdb_airport_{$iata}", 86400, function () use ($iata) {
+                try {
+                    $response = Http::timeout(4)->get("https://hexdb.io/api/v1/airport/iata/{$iata}");
+                    if ($response->successful()) {
+                        return response($response->body(), 200)
+                            ->header('Content-Type', 'application/json');
+                    }
+                } catch (\Throwable $e) {}
+
+                return response()->json(['error' => 'Airport not found'], 404);
+            });
+        });
+
+        // 4. Miniatura de imagen
         Route::get('/image/{hex}', function ($hex) {
             $hex = strtolower(trim($hex));
 
@@ -105,7 +114,6 @@ Route::prefix('v1')->group(function () {
                     }
                 } catch (\Throwable $e) {}
 
-                // Si no hay foto en HexDB, redirige al placeholder genérico
                 return redirect('https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=400&q=80');
             });
         });
@@ -113,7 +121,6 @@ Route::prefix('v1')->group(function () {
 
     // =========================================================================
     // 2. RUTAS PROTEGIDAS (USUARIO LOGUEADO)
-    // 🔐 SOLO Sanctum
     // =========================================================================
     Route::middleware([
         'auth:sanctum',
@@ -122,27 +129,22 @@ Route::prefix('v1')->group(function () {
         \App\Http\Middleware\LogResponseTime::class,
     ])->group(function () {
 
-        // Auth
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
 
-        // Vuelos
         Route::post('/predict-delay', [DelayController::class, 'predict']);
         Route::get('/flight-live/{icao}', [FlightController::class, 'getFlightData']);
         Route::get('/flights/live', [FlightController::class, 'getAllFlights']);
         Route::get('/flights/area', [FlightController::class, 'getFlightsByArea']);
         Route::get('/flights/nearby', [FlightController::class, 'getNearbyFlights']);
 
-        // OpenSky
         Route::get('/opensky/states', [OpenSkyController::class, 'getStatesAll']);
         Route::get('/flights/airport/{icao_code}', [OpenSkyController::class, 'getLiveFlightsToAirport']);
 
-        // Aeropuertos / Aerolíneas
         Route::get('/airports', [AirportStatsController::class, 'index']);
         Route::get('/airports/{icao_code}', [OpenSkyController::class, 'getAirportInfo']);
         Route::get('/airport-info/{icao_code}', [AirportStatsController::class, 'show']);
 
-        // Historial / Preferencias
         Route::post('/flight/view', [FlightController::class, 'storeFlightView']);
         Route::get('/preferences', [UserPreferencesController::class, 'index']);
         Route::post('/preferences', [UserPreferencesController::class, 'update']);
@@ -150,7 +152,6 @@ Route::prefix('v1')->group(function () {
 
     // =========================================================================
     // 3. ZONA ADMIN
-    // 🔐 Sanctum + check.admin
     // =========================================================================
     Route::middleware([
         'auth:sanctum',
