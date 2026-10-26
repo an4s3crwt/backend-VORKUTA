@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\SystemMetricsController;
 use App\Jobs\FailOnPurpose;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
+
 /*
 |--------------------------------------------------------------------------
 | API Routes - VORKUTA
@@ -33,26 +34,39 @@ Route::prefix('v1')->group(function () {
     );
 
     // Login / Register (Firebase ID Token → Sanctum)
-Route::post('/login', [AuthController::class, 'login'])->name('login');
+    Route::post('/login', [AuthController::class, 'login'])->name('login');
     Route::post('/register', [AuthController::class, 'register']);
-    // HexDB Proxy (Evita CORS en el frontend y cachea fichas técnicas)
-        Route::prefix('hexdb')->group(function () {
-            Route::get('/aircraft/{hex}', function ($hex) {
-                return Cache::remember("hexdb_aircraft_{$hex}", 86400, function () use ($hex) {
-                    $response = Http::timeout(4)->get("https://hexdb.io/api/v1/aircraft/{$hex}");
-                    return response($response->body(), $response->status())
-                        ->header('Content-Type', 'application/json');
-                });
-            });
 
-            Route::get('/route/{callsign}', function ($callsign) {
-                $response = Http::timeout(4)->get("https://hexdb.io/callsign-route-iata", [
-                    'callsign' => $callsign
-                ]);
+    // HexDB Proxy (Evita CORS en el frontend y cachea fichas técnicas e imágenes)
+    Route::prefix('hexdb')->group(function () {
+        Route::get('/aircraft/{hex}', function ($hex) {
+            return Cache::remember("hexdb_aircraft_{$hex}", 86400, function () use ($hex) {
+                $response = Http::timeout(4)->get("https://hexdb.io/api/v1/aircraft/{$hex}");
                 return response($response->body(), $response->status())
-                    ->header('Content-Type', 'text/plain');
+                    ->header('Content-Type', 'application/json');
             });
         });
+
+        Route::get('/route/{callsign}', function ($callsign) {
+            $response = Http::timeout(4)->get("https://hexdb.io/callsign-route-iata", [
+                'callsign' => $callsign
+            ]);
+            return response($response->body(), $response->status())
+                ->header('Content-Type', 'text/plain');
+        });
+
+        // 👈 ESTA ES LA QUE TE FALTABA PARA LAS FOTOS SIN CORS:
+        Route::get('/image/{hex}', function ($hex) {
+            return Cache::remember("hexdb_image_{$hex}", 86400, function () use ($hex) {
+                $response = Http::timeout(4)->get("https://hexdb.io/hex-image-thumb?hex={$hex}");
+                if ($response->successful()) {
+                    return response($response->body(), 200)
+                        ->header('Content-Type', 'text/plain');
+                }
+                return response('', 404);
+            });
+        });
+    });
 
     // =========================================================================
     // 2. RUTAS PROTEGIDAS (USUARIO LOGUEADO)
@@ -60,9 +74,6 @@ Route::post('/login', [AuthController::class, 'login'])->name('login');
     // =========================================================================
     Route::middleware([
         'auth:sanctum',
-        //'check.user',
-
-        // logging (ya con usuario autenticado)
         \App\Http\Middleware\LogPerformance::class,
         \App\Http\Middleware\ApiMetrics::class,
         \App\Http\Middleware\LogResponseTime::class,
@@ -87,7 +98,6 @@ Route::post('/login', [AuthController::class, 'login'])->name('login');
         Route::get('/airports', [AirportStatsController::class, 'index']);
         Route::get('/airports/{icao_code}', [OpenSkyController::class, 'getAirportInfo']);
         Route::get('/airport-info/{icao_code}', [AirportStatsController::class, 'show']);
-        //Route::get('/airlines', [AirlineController::class, 'index']);
 
         // Historial / Preferencias
         Route::post('/flight/view', [FlightController::class, 'storeFlightView']);
