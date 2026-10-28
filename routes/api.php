@@ -38,68 +38,68 @@ Route::prefix('v1')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
 
 
-    // HexDB Proxy (Directo sin caché)
-    Route::prefix('hexdb')->group(function () {
+    // Rutas de HexDB optimizadas en routes/api.php
 
-        // 1. Datos técnicos reales del avión
-        Route::get('/aircraft/{hex}', function ($hex) {
-            $hex = strtolower(trim($hex));
+Route::prefix('hexdb')->group(function () {
 
+    // 1. Datos del avión con caché de 7 días (evita volver a consultar HexDB si ya se buscó)
+    Route::get('/aircraft/{hex}', function ($hex) {
+        $hex = strtolower(trim($hex));
+
+        return Cache::remember("aircraft_{$hex}", 60 * 24 * 7, function () use ($hex) {
             try {
-                $response = Http::timeout(4)->get("https://hexdb.io/api/v1/aircraft/{$hex}");
+                $response = Http::timeout(3)->get("https://hexdb.io/api/v1/aircraft/{$hex}");
                 if ($response->successful() && !empty($response->json())) {
-                    return response()->json($response->json(), 200);
+                    return $response->json();
                 }
             } catch (\Throwable $e) {}
 
-            return response()->json([
+            return [
                 'ICAO' => strtoupper($hex),
                 'Registration' => 'N/A',
                 'RegisteredOwners' => 'Commercial / Private',
                 'Manufacturer' => 'Airliner',
                 'Model' => '',
                 'Type' => ''
-            ], 200);
+            ];
         });
+    });
 
-        // 2. Ruta real por callsign
-        Route::get('/route/{callsign}', function ($callsign) {
-            $callsign = strtoupper(trim($callsign));
+    // 2. Ruta con caché de 24 horas
+    Route::get('/route/{callsign}', function ($callsign) {
+        $callsign = strtoupper(trim($callsign));
 
+        return Cache::remember("route_{$callsign}", 60 * 24, function () use ($callsign) {
             try {
-                $response = Http::timeout(4)->get("https://hexdb.io/callsign-route-iata", [
+                $response = Http::timeout(3)->get("https://hexdb.io/callsign-route-iata", [
                     'callsign' => $callsign
                 ]);
                 $route = trim($response->body());
                 if ($response->successful() && !empty($route) && str_contains($route, '-') && !str_contains($route, 'Unknown')) {
-                    return response($route, 200)->header('Content-Type', 'text/plain');
+                    return $route;
                 }
             } catch (\Throwable $e) {}
 
-            return response('', 204)->header('Content-Type', 'text/plain');
-        });
-
-        // 3. Coordenadas reales de aeropuerto
-        Route::get('/airport/{iata}', function ($iata) {
-            $iata = strtoupper(trim($iata));
-
-            try {
-                $response = Http::timeout(4)->get("https://hexdb.io/api/v1/airport/iata/{$iata}");
-                if ($response->successful()) {
-                    return response($response->body(), 200)
-                        ->header('Content-Type', 'application/json');
-                }
-            } catch (\Throwable $e) {}
-
-            return response()->json(['error' => 'Airport not found'], 404);
-        });
-
-        // 4. Miniatura de imagen (Redirige directamente al origen sin descargar el archivo en tu servidor)
-        Route::get('/image/{hex}', function ($hex) {
-            $hex = strtolower(trim($hex));
-            return redirect("https://hexdb.io/hex-image-thumb?hex={$hex}");
+            return null;
         });
     });
+
+    // 3. Aeropuerto con caché de 30 días
+    Route::get('/airport/{iata}', function ($iata) {
+        $iata = strtoupper(trim($iata));
+
+        return Cache::remember("airport_{$iata}", 60 * 24 * 30, function () use ($iata) {
+            try {
+                $response = Http::timeout(3)->get("https://hexdb.io/api/v1/airport/iata/{$iata}");
+                if ($response->successful()) {
+                    return $response->json();
+                }
+            } catch (\Throwable $e) {}
+
+            return ['error' => 'Airport not found'];
+        });
+    });
+});
     // =========================================================================
     // 2. RUTAS PROTEGIDAS (USUARIO LOGUEADO)
     // =========================================================================
